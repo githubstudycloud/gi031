@@ -282,6 +282,7 @@
   <div class="sticky-top">
     <header class="topbar">
       <h1 id="reportTitle">每日销售报表</h1>
+      <button class="btn sm ghost" id="btnPreset" title="切换报表模板 (演示不同过滤器组合)" style="font-size:11px;">▾ 切模板</button>
       <span class="sub" id="cfgVer"></span>
       <span class="grow"></span>
       <div class="topbar-right">
@@ -352,9 +353,10 @@
 
 <script>
 /* ════════════════════════════════════════════════════════════════════
-   MOCK CONFIG (response of GET /api/reports/daily_sales/config)
+   MOCK CONFIG PRESETS —— 同一份前端代码 + 同一份协议，
+   通过切换 filters 数组 = 适配各种简单/复杂报表
    ════════════════════════════════════════════════════════════════════ */
-const MOCK_CONFIG = {
+const MOCK_CONFIG_FULL = {
   meta: {
     report_type: "daily_sales",
     name: "每日销售报表",
@@ -488,6 +490,76 @@ const MOCK_CONFIG = {
     }
   }
 };
+
+/* Helper —— 以 full preset 为基底替换 filters 数组 */
+function makePreset(displayName, filters) {
+  return { ...MOCK_CONFIG_FULL,
+    meta: { ...MOCK_CONFIG_FULL.meta, name: displayName },
+    filters };
+}
+const PRESETS = {
+  full: MOCK_CONFIG_FULL,
+  /* B. 单日 + 一层区域（max_levels=1）—— 极简形态 */
+  single_day_flat: makePreset("B · 单日 + 一层区域", [
+    { code:"business_date", label:"业务日期", kind:"date_single", required:true,
+      default:{value:"2026-05-13"}, param:{value:"biz_date"} },
+    { code:"region", label:"大区", kind:"flat_dropdown", param:{value:"region_code"},
+      source:{ endpoint:"/api/dropdowns/region_tree",
+        paging:{enabled:true,page_size:50},
+        supports_favorite:true, max_levels:1,
+        sortable_by:["label","usage_count","is_favorite"],
+        default_sort:[{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        params_in:["q","page","page_size","sort","only_favorites"] } }
+  ]),
+  /* C. 时间段 + 4 层区域（任意层可选）+ 金额区间 */
+  range_4level_amt: makePreset("C · 时间段 + 4 层区域 + 金额区间", [
+    { code:"business_date", label:"业务日期段", kind:"date_range", required:true,
+      default:{from:"2026-05-10",to:"2026-05-13"}, param:{from:"date_from",to:"date_to"} },
+    { code:"region", label:"区域 (4 层)", kind:"hierarchy_dropdown", param:{value:"region_code"},
+      source:{ endpoint:"/api/dropdowns/region_tree",
+        paging:{enabled:true,page_size:50}, max_levels:4, select_at_any_depth:true,
+        supports_favorite:true,
+        sortable_by:["label","usage_count","is_favorite"],
+        default_sort:[{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        params_in:["parent","q","page","page_size","sort","only_favorites"] } },
+    { code:"gmv_app", label:"APP GMV 区间", kind:"number_range", param:{from:"min_gmv_app",to:"max_gmv_app"},
+      default:{from:null,to:null}, min:0, step:100, unit:"¥",
+      label_from:"≥", label_to:"≤" }
+  ]),
+  /* D. 仅区域，无日期 */
+  region_only: makePreset("D · 仅区域 (无日期)", [
+    { code:"region", label:"区域 (2 层)", kind:"hierarchy_dropdown", param:{value:"region_code"},
+      source:{ endpoint:"/api/dropdowns/region_tree",
+        paging:{enabled:true,page_size:50}, max_levels:2, select_at_any_depth:true,
+        supports_favorite:true,
+        default_sort:[{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        sortable_by:["label","usage_count","is_favorite"],
+        params_in:["parent","q","page","page_size","sort","only_favorites"] } }
+  ]),
+  /* E. 单日 + 多选区域 + 文本搜索 */
+  multi_region_text: makePreset("E · 单日 + 多选区域 + 文本搜索", [
+    { code:"business_date", label:"业务日期", kind:"date_single", required:true,
+      default:{value:"2026-05-13"}, param:{value:"biz_date"} },
+    { code:"region", label:"区域 (多选)", kind:"multi_select", param:{value:"region_code"},
+      source:{ endpoint:"/api/dropdowns/region_tree",
+        paging:{enabled:true,page_size:50}, max_levels:2, select_at_any_depth:true,
+        supports_favorite:true, max_picks:8,
+        default_sort:[{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        sortable_by:["label","usage_count","is_favorite"],
+        params_in:["parent","q","page","page_size","sort","only_favorites"] } },
+    { code:"product_kw", label:"产品关键字", kind:"text", param:{value:"product_kw"},
+      placeholder:"如：拿铁 / P001 …", min_chars:2 }
+  ])
+};
+const PRESET_LIST = [
+  { key:"full",              label:"A · 完整 (日期段 + 多层区域 + 产品搜索)" },
+  { key:"single_day_flat",   label:"B · 单日 + 一层区域" },
+  { key:"range_4level_amt",  label:"C · 时间段 + 4 层区域 + 金额区间" },
+  { key:"region_only",       label:"D · 仅区域 (无日期)" },
+  { key:"multi_region_text", label:"E · 单日 + 多选区域 + 文本搜索" }
+];
+let CURRENT_PRESET = "full";
+const MOCK_CONFIG = PRESETS.full;  // 兼容老引用
 
 /* ════════════════════════════════════════════════════════════════════
    Mock data sources (dropdowns, versions, fact rows, drilldown rows)
@@ -642,12 +714,23 @@ async function api(path, params={}) {
   if (path === "/api/reports/daily_sales/summary") {
     const v = params.version === "latest" || params.version == null ? 3 : +params.version;
     let rows = (FACT_BY_VERSION[v] ?? FACT_BY_VERSION[3]).slice();
-    // filter by region (prefix support)
+    // filter by region (支持 prefix + 多值逗号分隔)
     if (params.region_code) {
-      const r = String(params.region_code);
-      rows = rows.filter(x => x.region_code === r || (r.length<6 && x.region_code.startsWith(r)));
+      const codes = String(params.region_code).split(",").map(s => s.trim()).filter(Boolean);
+      rows = rows.filter(x => codes.some(r => x.region_code === r || (r.length<6 && x.region_code.startsWith(r))));
     }
-    if (params.product_code) rows = rows.filter(x => x.product_code === params.product_code);
+    if (params.product_code) {
+      const codes = String(params.product_code).split(",").map(s => s.trim()).filter(Boolean);
+      rows = rows.filter(x => codes.includes(x.product_code));
+    }
+    // 数值区间
+    if (params.min_gmv_app != null) rows = rows.filter(x => x.gmv_app >= +params.min_gmv_app);
+    if (params.max_gmv_app != null) rows = rows.filter(x => x.gmv_app <= +params.max_gmv_app);
+    // 文本搜索（演示 multi_region_text preset）
+    if (params.product_kw) {
+      const kw = String(params.product_kw).toLowerCase();
+      rows = rows.filter(x => x.product_code.toLowerCase().includes(kw));
+    }
     // row_filter JSON
     if (params.row_filter) {
       const filters = JSON.parse(params.row_filter);
@@ -834,10 +917,59 @@ function renderFilterBar() {
       toI.onchange   = () => { v.to   = toI.value;   state.filterValues[f.code]={...v}; };
       inp.append(fromI, document.createTextNode("~"), toI);
       wrap.appendChild(inp);
-    } else if (f.kind === "hierarchy_dropdown") {
+    } else if (f.kind === "date_single") {
+      const inp = document.createElement("div"); inp.className = "field-input"; inp.style.minWidth = "150px";
+      const v = state.filterValues[f.code] || f.default || {};
+      const dI = document.createElement("input"); dI.type="date"; dI.value = v.value || "";
+      dI.onchange = () => { state.filterValues[f.code] = { value: dI.value }; };
+      inp.appendChild(dI);
+      wrap.appendChild(inp);
+    } else if (f.kind === "hierarchy_dropdown" || f.kind === "flat_dropdown") {
+      // flat_dropdown 是 hierarchy + max_levels=1 的语法糖
+      if (f.kind === "flat_dropdown" && !f.source.max_levels) f.source.max_levels = 1;
       wrap.appendChild(buildDropdownInput(f, "hierarchy"));
     } else if (f.kind === "search_dropdown") {
       wrap.appendChild(buildDropdownInput(f, "search"));
+    } else if (f.kind === "multi_select" || f.kind === "multi_search") {
+      wrap.appendChild(buildMultiSelectInput(f));
+    } else if (f.kind === "text") {
+      const inp = document.createElement("div"); inp.className = "field-input"; inp.style.minWidth = "200px";
+      const tI = document.createElement("input"); tI.type="text";
+      tI.placeholder = f.placeholder || "请输入";
+      const v = state.filterValues[f.code];
+      tI.value = (typeof v === "object" ? v?.value : v) || "";
+      tI.oninput = () => { state.filterValues[f.code] = { value: tI.value }; };
+      inp.appendChild(tI);
+      wrap.appendChild(inp);
+    } else if (f.kind === "number_range") {
+      const inp = document.createElement("div"); inp.className = "field-input"; inp.style.minWidth = "220px";
+      const v = state.filterValues[f.code] || f.default || {};
+      const fL = document.createElement("span"); fL.style.color="var(--muted)"; fL.style.fontSize="11px";
+      fL.textContent = f.label_from || "≥";
+      const fI = document.createElement("input"); fI.type="number"; fI.placeholder = "不限";
+      fI.value = v.from ?? ""; fI.style.width = "70px"; if (f.step != null) fI.step = f.step;
+      const tL = document.createElement("span"); tL.style.color="var(--muted)"; tL.style.fontSize="11px";
+      tL.textContent = f.label_to || "≤";
+      const tI = document.createElement("input"); tI.type="number"; tI.placeholder = "不限";
+      tI.value = v.to ?? ""; tI.style.width = "70px"; if (f.step != null) tI.step = f.step;
+      const update = () => state.filterValues[f.code] = {
+        from: fI.value === "" ? null : +fI.value,
+        to:   tI.value === "" ? null : +tI.value
+      };
+      fI.onchange = update; tI.onchange = update;
+      inp.append(fL, fI, tL, tI);
+      if (f.unit) { const u = document.createElement("span"); u.textContent = f.unit; u.style.color="var(--muted)"; u.style.fontSize="11px"; inp.appendChild(u); }
+      wrap.appendChild(inp);
+    } else if (f.kind === "boolean") {
+      const inp = document.createElement("div"); inp.className = "field-input"; inp.style.minWidth = "auto";
+      const lab = document.createElement("label"); lab.style.display="inline-flex"; lab.style.alignItems="center"; lab.style.gap="6px"; lab.style.cursor="pointer";
+      const cb = document.createElement("input"); cb.type="checkbox";
+      cb.checked = !!state.filterValues[f.code]?.value;
+      cb.onchange = () => state.filterValues[f.code] = { value: cb.checked };
+      lab.append(cb, document.createTextNode(cb.checked ? (f.true_label||"是") : (f.false_label||"否")));
+      cb.onchange = () => { state.filterValues[f.code] = { value: cb.checked }; renderFilterBar(); };
+      inp.appendChild(lab);
+      wrap.appendChild(inp);
     }
     bar.appendChild(wrap);
   }
@@ -873,6 +1005,143 @@ function buildDropdownInput(filter, kind) {
   render();
   inp.onclick = (e) => openDropdownPopup(filter, kind, e.currentTarget);
   return inp;
+}
+
+function buildMultiSelectInput(filter) {
+  const inp = document.createElement("div"); inp.className = "field-input";
+  inp.style.minWidth = "260px"; inp.style.flexWrap = "wrap";
+  const arr = (state.filterValues[filter.code] || []);
+  if (arr.length === 0) {
+    const ph = document.createElement("span"); ph.style.color = "var(--muted)";
+    ph.textContent = "选择多个 " + filter.label + " …";
+    inp.appendChild(ph);
+  } else {
+    arr.slice(0, 4).forEach(v => {
+      const chip = document.createElement("span"); chip.className="chip";
+      chip.innerHTML = `${v.label || v.value} <span class="x" title="移除">×</span>`;
+      chip.querySelector(".x").onclick = e => {
+        e.stopPropagation();
+        state.filterValues[filter.code] = (state.filterValues[filter.code] || []).filter(x => (x.value||x) !== (v.value||v));
+        renderFilterBar();
+      };
+      inp.appendChild(chip);
+    });
+    if (arr.length > 4) {
+      const m = document.createElement("span"); m.className="chip"; m.style.background="#e5e7eb"; m.style.color="var(--text-soft)";
+      m.textContent = `+${arr.length - 4}`; inp.appendChild(m);
+    }
+  }
+  const car = document.createElement("span"); car.textContent=" ▾"; car.style.color="var(--muted)"; car.style.marginLeft = "auto";
+  inp.appendChild(car);
+  inp.onclick = (e) => openMultiSelectPopup(filter, e.currentTarget);
+  return inp;
+}
+
+function openMultiSelectPopup(filter, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = rect.left + "px"; popupEl.style.top = (rect.bottom + 4) + "px";
+  popupEl.style.minWidth = Math.max(320, rect.width) + "px";
+  const src = filter.source;
+  const stateP = {
+    q:"", sort:(src.default_sort ?? []).map(s=>`${s.field}:${s.dir}`).join(","),
+    only_favorites:false, expanded:{}, page:1
+  };
+  const max_picks = src.max_picks ?? 0;
+  const selected = () => state.filterValues[filter.code] || [];
+  const isSelected = (v) => selected().some(x => (x.value||x) === v);
+
+  const head = document.createElement("div"); head.className = "popup-head";
+  const qIn = document.createElement("input"); qIn.className="q"; qIn.placeholder = "搜索 " + filter.label + " …";
+  head.appendChild(qIn);
+  const row = document.createElement("div"); row.className="row";
+  if (src.supports_favorite) {
+    const lab = document.createElement("label"); lab.style.cursor="pointer"; lab.style.display="inline-flex"; lab.style.alignItems="center"; lab.style.gap="4px";
+    const cb = document.createElement("input"); cb.type="checkbox";
+    cb.onchange = () => { stateP.only_favorites = cb.checked; load(); };
+    lab.append(cb, document.createTextNode("只看 ★"));
+    row.appendChild(lab);
+  }
+  const sel = document.createElement("span"); sel.style.marginLeft="auto";
+  sel.innerHTML = `已选 <b style="color:var(--primary);">${selected().length}</b>${max_picks?` / ${max_picks}`:""}`;
+  row.appendChild(sel);
+  head.appendChild(row);
+  popupEl.appendChild(head);
+
+  const body = document.createElement("div"); body.className = "popup-body"; popupEl.appendChild(body);
+
+  const foot = document.createElement("div"); foot.className = "popup-foot";
+  foot.innerHTML = `<button class="btn sm ghost" id="msClear">清空</button><span style="flex:1;"></span><button class="btn sm primary" id="msDone">完成</button>`;
+  popupEl.appendChild(foot);
+  document.body.appendChild(popupEl);
+  qIn.focus();
+
+  popupEl.querySelector("#msDone").onclick = () => { closePopup(); renderFilterBar(); };
+  popupEl.querySelector("#msClear").onclick = () => { state.filterValues[filter.code] = []; load(); sel.innerHTML = `已选 <b style="color:var(--primary);">0</b>${max_picks?` / ${max_picks}`:""}`; };
+
+  let timer;
+  qIn.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { stateP.q = qIn.value; stateP.page = 1; stateP.expanded = {}; load(); }, 200); };
+
+  async function load() {
+    body.innerHTML = `<div style="padding:16px;color:var(--muted);">加载中…</div>`;
+    const tree = await loadTree(filter, stateP);
+    body.innerHTML = "";
+    for (const node of tree) {
+      const r = renderMultiOpt(filter, node, stateP, load, isSelected, sel, max_picks);
+      body.appendChild(r);
+    }
+  }
+  load();
+}
+
+function renderMultiOpt(filter, node, stateP, reload, isSelected, selChip, max_picks) {
+  const row = document.createElement("div"); row.className = "opt";
+  const max = filter.source.max_levels || 99;
+  const isMaxLeaf = node.depth >= max - 1;
+  const canSelect = !node.has_children || isMaxLeaf || filter.source.select_at_any_depth;
+  const canExpand = node.has_children && !isMaxLeaf;
+  if (isSelected(node.value)) row.classList.add("sel");
+  const indent = document.createElement("span"); indent.className="indent"; indent.style.width=(node.depth*14)+"px";
+  row.appendChild(indent);
+  const caret = document.createElement("span"); caret.className="caret";
+  caret.textContent = canExpand ? (stateP.expanded[node.value] ? "▾" : "▸") : " ";
+  if (canExpand) {
+    caret.style.cursor = "pointer";
+    caret.onclick = (e) => { e.stopPropagation(); stateP.expanded[node.value] = !stateP.expanded[node.value]; reload(); };
+  }
+  row.appendChild(caret);
+  // 多选 checkbox
+  const cb = document.createElement("input"); cb.type="checkbox"; cb.style.accentColor = "var(--primary)";
+  cb.checked = isSelected(node.value); cb.disabled = !canSelect;
+  cb.onclick = (e) => {
+    e.stopPropagation();
+    const arr = state.filterValues[filter.code] || [];
+    if (cb.checked) {
+      if (max_picks && arr.length >= max_picks) { cb.checked = false; toast(`最多 ${max_picks} 个`); return; }
+      arr.push({ value: node.value, label: node.label });
+    } else {
+      const idx = arr.findIndex(x => (x.value||x) === node.value);
+      if (idx >= 0) arr.splice(idx, 1);
+    }
+    state.filterValues[filter.code] = arr;
+    selChip.innerHTML = `已选 <b style="color:var(--primary);">${arr.length}</b>${max_picks?` / ${max_picks}`:""}`;
+    row.classList.toggle("sel", cb.checked);
+  };
+  row.appendChild(cb);
+  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent = node.label;
+  if (!canSelect) lbl.style.color = "var(--muted)";
+  row.appendChild(lbl);
+  if (node.usage_count != null) {
+    const m = document.createElement("span"); m.className="meta"; m.textContent = "用量 "+node.usage_count;
+    row.appendChild(m);
+  }
+  if (filter.source.supports_favorite) row.appendChild(starBtn(node, "region_tree"));
+  row.onclick = (e) => {
+    if (e.target.closest(".caret") || e.target.closest(".star") || e.target.tagName === "INPUT") return;
+    if (canSelect) { cb.checked = !cb.checked; cb.click(); }
+  };
+  return row;
 }
 
 /* ───── Version pill ───── */
@@ -1106,6 +1375,7 @@ document.addEventListener("click", (e) => {
   if (popupEl && !popupEl.contains(e.target)
       && !e.target.closest(".field-input")
       && !e.target.closest(".ver-pill")
+      && !e.target.closest("#btnPreset")
       && !e.target.closest(".funnel")) closePopup();
 });
 
@@ -1237,11 +1507,14 @@ function baseDropdownParams(filter, stateP) {
   return p;
 }
 async function loadTree(filter, stateP) {
+  const max = filter.source.max_levels || 99;
   const top = await api(filter.source.endpoint, {...baseDropdownParams(filter, stateP), parent: null});
   const out = [];
   async function walk(items, depth) {
     for (const it of items) {
       out.push({...it, depth});
+      // 到达 max_levels 则不再向下展开（即使展开标志为 true）
+      if (depth >= max - 1) continue;
       if (stateP.expanded[it.value]) {
         const kids = await api(filter.source.endpoint, {...baseDropdownParams(filter, stateP), parent: it.value});
         await walk(kids.items, depth+1);
@@ -1253,17 +1526,22 @@ async function loadTree(filter, stateP) {
 }
 function renderHierarchyOpt(filter, node, stateP, reload) {
   const row = document.createElement("div"); row.className = "opt";
+  const max = filter.source.max_levels || 99;
+  const isMaxLeaf = node.depth >= max - 1;
+  const canExpand = node.has_children && !isMaxLeaf;
+  const canSelect = !node.has_children || isMaxLeaf || filter.source.select_at_any_depth;
   if (state.filterValues[filter.code]?.value === node.value) row.classList.add("sel");
   const indent = document.createElement("span"); indent.className="indent"; indent.style.width=(node.depth*14)+"px";
   row.appendChild(indent);
   const caret = document.createElement("span"); caret.className="caret";
-  caret.textContent = node.has_children ? (stateP.expanded[node.value] ? "▾" : "▸") : " ";
-  if (node.has_children) {
+  caret.textContent = canExpand ? (stateP.expanded[node.value] ? "▾" : "▸") : " ";
+  if (canExpand) {
     caret.style.cursor = "pointer";
     caret.onclick = (e) => { e.stopPropagation(); stateP.expanded[node.value] = !stateP.expanded[node.value]; reload(); };
   }
   row.appendChild(caret);
   const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent = node.label;
+  if (!canSelect) lbl.style.color = "var(--muted)";
   row.appendChild(lbl);
   if (node.usage_count != null) {
     const m = document.createElement("span"); m.className="meta"; m.textContent = "用量 "+node.usage_count;
@@ -1272,6 +1550,11 @@ function renderHierarchyOpt(filter, node, stateP, reload) {
   if (filter.source.supports_favorite) row.appendChild(starBtn(node, "region_tree"));
   row.onclick = (e) => {
     if (e.target.closest(".caret") || e.target.closest(".star")) return;
+    if (!canSelect) {
+      // 不可选的层级（中间分组）—— 点击当作展开
+      if (canExpand) { stateP.expanded[node.value] = !stateP.expanded[node.value]; reload(); }
+      return;
+    }
     state.filterValues[filter.code] = { value: node.value, label: node.label };
     for (const f of state.config.filters) if (f.depends_on?.includes(filter.code)) state.filterValues[f.code] = null;
     closePopup(); renderFilterBar();
@@ -1556,11 +1839,31 @@ async function refresh() {
   for (const f of cfg.filters) {
     const v = state.filterValues[f.code];
     if (v == null) continue;
-    if (f.kind === "date_range") {
-      if (v.from) params[f.param.from] = v.from;
-      if (v.to)   params[f.param.to]   = v.to;
-    } else {
-      params[f.param.value] = v.value ?? v;
+    switch (f.kind) {
+      case "date_range":
+      case "datetime_range":
+        if (v.from) params[f.param.from] = v.from;
+        if (v.to)   params[f.param.to]   = v.to;
+        break;
+      case "number_range":
+        if (v.from != null) params[f.param.from] = v.from;
+        if (v.to   != null) params[f.param.to]   = v.to;
+        break;
+      case "date_single":
+      case "datetime_single":
+      case "text":
+      case "boolean":
+        if (v.value !== "" && v.value != null) params[f.param.value] = v.value;
+        break;
+      case "multi_select":
+      case "multi_search": {
+        const arr = Array.isArray(v) ? v : [];
+        if (arr.length) params[f.param.value] = arr.map(x => x.value ?? x).join(",");
+        break;
+      }
+      default:  // flat_dropdown, hierarchy_dropdown, search_dropdown
+        if (v.value != null) params[f.param.value] = v.value;
+        else if (typeof v !== "object") params[f.param.value] = v;
     }
   }
   params.version = state.version;
@@ -1581,8 +1884,27 @@ async function refresh() {
 /* ════════════════════════════════════════════════════════════════════
    Bootstrap
    ════════════════════════════════════════════════════════════════════ */
+async function applyPreset(key) {
+  CURRENT_PRESET = key;
+  state.config = PRESETS[key];
+  state.filterValues = {}; state.rowFilters = []; state.sort = null; state.page = 1;
+  for (const f of state.config.filters) {
+    if (f.default != null) {
+      // multi_select 默认是数组形态
+      if (f.kind === "multi_select" || f.kind === "multi_search") {
+        state.filterValues[f.code] = Array.isArray(f.default.value) ? f.default.value.map(v => ({value:v,label:v})) : [];
+      } else if (typeof f.default === "object") {
+        state.filterValues[f.code] = {...f.default};
+      } else {
+        state.filterValues[f.code] = { value: f.default };
+      }
+    }
+  }
+  renderTitle(); renderFilterBar(); await refresh();
+}
+
 (async function init() {
-  state.config = MOCK_CONFIG;
+  state.config = PRESETS[CURRENT_PRESET];
   for (const f of state.config.filters) if (f.default) state.filterValues[f.code] = {...f.default};
   state.page_size = state.config.primary_view.paging.default_page_size;
   await loadVersionList();
@@ -1605,8 +1927,27 @@ async function refresh() {
     if (e.target.id === "modalMask") closeDrilldown();
   });
   document.getElementById("verPill").onclick = openVersionPopup;
+  document.getElementById("btnPreset").onclick = openPresetPopup;
   window.addEventListener("resize", measureHeaderHeights);
 })();
+
+function openPresetPopup() {
+  closePopup();
+  const rect = document.getElementById("btnPreset").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = rect.left + "px"; popupEl.style.top = (rect.bottom + 4) + "px";
+  popupEl.style.minWidth = "320px";
+  popupEl.innerHTML = `<div class="popup-head"><div class="row"><b style="color:var(--text);">报表模板（演示过滤器动态化）</b></div></div><div class="popup-body" id="presetList"></div>`;
+  document.body.appendChild(popupEl);
+  const lst = popupEl.querySelector("#presetList");
+  for (const p of PRESET_LIST) {
+    const o = document.createElement("div"); o.className = "opt";
+    if (p.key === CURRENT_PRESET) o.classList.add("sel");
+    o.innerHTML = `<span style="display:inline-block;width:14px;text-align:center;">${p.key === CURRENT_PRESET ? "●" : "○"}</span><span class="lbl">${p.label}</span>`;
+    o.onclick = async () => { closePopup(); await applyPreset(p.key); toast("已切换：" + p.label); };
+    lst.appendChild(o);
+  }
+}
 </script>
 </body>
 </html>

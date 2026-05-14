@@ -250,6 +250,99 @@
 - **drilldown 引用**：列上写 `"drilldown": {"ref": "<key>"}`，真正定义在响应根的 `drilldowns` 字典里。这样多个列共享一份下钻配置不重复。 占位符在请求时由前端按 `param_mapping` 替换：`row.*` = 当前数据行字段，`filter.*` = 当前页筛选值，`cell.column` = 被点击的列 code，`cell.value` = 被点击的值。
 - **未声明 drilldown 的列**：单元格**不可点击**，鼠标不变手型。这是默认行为，避免管理员误开。
 
+### 1.3 过滤器形态枚举 (`filter.kind`)
+
+不同业务报表的过滤器形态差异极大——有的只要日期，有的要 4 层区域，有的要"日期段+多选 SKU+金额区间"。下表列出协议支持的所有 `kind`，每种都通过同一 `filters` 数组动态声明，前端有一份 dispatch 不动业务代码：
+
+| kind | UI 形态 | `param` 形状 | `default` 形状 | 附加 source 字段 |
+|---|---|---|---|---|
+| `date_single` | 单个日期选择器 | `{value:"biz_date"}` | `{value:"2026-05-13"}` | — |
+| `date_range`  | 起止两个日期 | `{from:"date_from", to:"date_to"}` | `{from:"...", to:"..."}` | — |
+| `datetime_single` / `datetime_range` | 同上但带时分 | 同 date | 同 date | — |
+| `flat_dropdown` | 平铺单选 | `{value:"region_code"}` | `{value:"CN-31"}` | `paging` `sortable_by` `supports_favorite` `params_in` |
+| `hierarchy_dropdown` | 树形单选（懒加载子级） | 同 flat | 同 flat | `max_levels`(1-N) · `select_at_any_depth`(bool) |
+| `search_dropdown` | 输入即搜（远程） | 同 flat | 同 flat | `debounce_ms` `min_chars` |
+| `multi_select` | 多选 chips（可同时是 flat / hierarchy / search） | `{value:"region_code"}` (数组) | `{value:["CN-31","CN-44"]}` | 同上 + `max_picks` |
+| `multi_search` | 远程搜索 + 多选 | 同 multi_select | 同 multi_select | — |
+| `text` | 单行文本（精确/模糊看 op） | `{value:"keyword"}` | `{value:""}` | `placeholder` `min_chars` |
+| `number_range` | 起止两个数字 | `{from:"min_amt", to:"max_amt"}` | `{from:100, to:9999}` | `min` `max` `step` `unit` |
+| `boolean` | 单复选 / 开关 | `{value:"include_test"}` | `{value:false}` | `true_label` `false_label` |
+| `enum_radio` | 单行 radio 一组 | `{value:"channel"}` | — | `options:[{value,label}]` |
+| `enum_chips` | chips 单选/多选 | 同 enum_radio | — | `options[]`, `multi:bool` |
+
+**关键设计**：
+- `hierarchy_dropdown.source.max_levels`：限定树的最大深度。`max_levels=1` 等价于 `flat_dropdown`；`max_levels=4` 表示树最多 4 层（大区/省/市/区）。**到达 max_levels 时该层节点视为叶子**，不再请求子级。
+- `hierarchy_dropdown.source.select_at_any_depth`：默认 `false`——只有最深一层（叶子）可被选中；置 `true` 时**每一层都可选**（"选广东"可，"选广东/深圳"也可）。
+- 过滤器**全部可选**：`filters` 给空数组也合法，意味着该报表"不需要任何前端筛选，直接出全量当前业务日"。
+- 任意 kind 都可写 `depends_on: ["region"]`，父字段值变化时自动重新拉数据并清空当前选择。
+- 任意 kind 都可写 `visible_if: { region: { op:"in", value:["CN-31","CN-44"] } }`，按其他过滤器值动态显隐（V1.1，本期占位）。
+
+### 1.4 过滤器配置示例（应对"简单类型"）
+
+**A. 只要日期 + 一层区域**
+
+```jsonc
+"filters": [
+  { "code":"business_date", "kind":"date_single", "required":true,
+    "default":{"value":"2026-05-13"}, "param":{"value":"biz_date"} },
+  { "code":"region", "kind":"flat_dropdown",
+    "param":{"value":"region_code"},
+    "source":{ "endpoint":"/api/dropdowns/region_top",
+               "paging":{"enabled":true,"page_size":50},
+               "supports_favorite":true, "params_in":["q","page","page_size","sort"] }}
+]
+```
+
+**B. 时间段 + 4 层区域（可任意层选中）+ 金额区间**
+
+```jsonc
+"filters": [
+  { "code":"business_date", "kind":"date_range", "required":true,
+    "default":{"from":"2026-05-01","to":"2026-05-13"},
+    "param":{"from":"date_from","to":"date_to"} },
+  { "code":"region", "kind":"hierarchy_dropdown",
+    "param":{"value":"region_code"},
+    "source":{ "endpoint":"/api/dropdowns/region_tree",
+               "paging":{"enabled":true,"page_size":50},
+               "max_levels":4, "select_at_any_depth":true,
+               "supports_favorite":true, "params_in":["parent","q","page","page_size","sort"]}},
+  { "code":"amount", "kind":"number_range",
+    "param":{"from":"min_amt","to":"max_amt"}, "default":{"from":1000,"to":null},
+    "min":0, "step":100, "unit":"¥" }
+]
+```
+
+**C. 只要区域，没有日期（按当前最新版直接出数）**
+
+```jsonc
+"filters": [
+  { "code":"region", "kind":"hierarchy_dropdown",
+    "param":{"value":"region_code"},
+    "source":{ "endpoint":"/api/dropdowns/region_tree",
+               "max_levels":2, "select_at_any_depth":true,
+               "supports_favorite":true, "params_in":["parent","q","page","page_size","sort"]}}
+]
+```
+
+**D. 多选区域 + 多选产品 + 单日**
+
+```jsonc
+"filters": [
+  { "code":"business_date", "kind":"date_single", "default":{"value":"2026-05-13"},
+    "param":{"value":"biz_date"} },
+  { "code":"regions",  "kind":"multi_select",
+    "param":{"value":"region_code"},
+    "source":{ "endpoint":"/api/dropdowns/region_tree", "max_levels":2,
+               "supports_favorite":true, "max_picks":8, "params_in":["parent","q","page"] } },
+  { "code":"products", "kind":"multi_search",
+    "param":{"value":"product_code"}, "depends_on":["regions"],
+    "source":{ "endpoint":"/api/dropdowns/product_search",
+               "supports_favorite":true, "min_chars":2, "params_in":["q","page","region_code"] } }
+]
+```
+
+> 这四个示例都只改配置，不改前端代码——前端 `FilterBar` 拿到 `filters[]` 后按 `kind` 派发到对应组件即可（详见 05-frontend-integration §3）。
+
 ---
 
 ## 2. 数据接口

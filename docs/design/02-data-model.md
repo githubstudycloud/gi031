@@ -144,8 +144,8 @@
 |---|---|---|
 | `key` PK | text | 全局唯一，例 `region_tree`、`product_search` |
 | `report_type` FK | text | 归属（一个下拉可能跨报表复用：本字段为可空，nullable 表示通用） |
-| `kind` | enum(`flat`,`hierarchy`,`search`,`date_range`) | |
-| `data_source` | enum(`static`,`sql`,`api`,`derived`) | 选项来自哪里 |
+| `kind` | enum(`flat_dropdown`,`hierarchy_dropdown`,`search_dropdown`,`multi_select`,`multi_search`,`date_single`,`date_range`,`datetime_single`,`datetime_range`,`text`,`number_range`,`boolean`,`enum_radio`,`enum_chips`) | 全部 14 种过滤器形态，详见 03-api §1.3 |
+| `data_source` | enum(`static`,`sql`,`api`,`derived`) | 选项来自哪里 (对枚举类 / 下拉类有效) |
 | `source_config` | jsonb | 由 `data_source` 决定形态（见下） |
 | `paging` | jsonb | `{"enabled":true,"page_size":50}` |
 | `sortable_by` | jsonb | `["label","usage_count","is_favorite"]` |
@@ -153,6 +153,10 @@
 | `supports_favorite` | bool | |
 | `supports_filter` | bool | 是否在选项上再开 filter（如"只看启用的"） |
 | `parent_key` | text | 层级下拉时，父级的 dropdown_def.key |
+| `max_levels` | int | 层级下拉的最大深度。`1` 等价于 flat；超过则按需懒加载。**到达 max_levels 的节点视为叶子** |
+| `select_at_any_depth` | bool | 层级下拉中"非叶子节点是否可被选中"；默认 `false` |
+| `max_picks` | int | multi_select / multi_search 的最大可选数；空表示不限 |
+| `min_chars` | int | search_dropdown / multi_search 触发查询的最小字符数 |
 
 **`source_config` 形态举例**：
 
