@@ -3,193 +3,323 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>gi031 · 报表平台原型</title>
+<title>gi031 · 报表平台原型 (v2)</title>
 <style>
   :root {
-    --bg: #f6f7f9;
+    --bg: #f4f6fb;
+    --bg-elev: #ffffff;
     --panel: #ffffff;
-    --border: #e3e5ea;
-    --border-strong: #c9ccd3;
-    --text: #1f2330;
-    --muted: #6b7180;
+    --border: #e3e7ee;
+    --border-strong: #c9d0db;
+    --text: #0f172a;
+    --text-soft: #475569;
+    --muted: #94a3b8;
     --primary: #2563eb;
-    --primary-50: #eef4ff;
+    --primary-600: #1d4ed8;
+    --primary-50: #eff6ff;
+    --primary-100: #dbeafe;
     --success: #16a34a;
     --warning: #d97706;
+    --warning-soft: #fef3c7;
     --danger: #dc2626;
-    --row-hover: #f3f6fb;
-    --row-stripe: #fafbfc;
-    --shadow: 0 2px 8px rgba(0,0,0,.06);
-    --shadow-lg: 0 10px 30px rgba(0,0,0,.15);
+    --danger-soft: #fee2e2;
+    --gold: #f59e0b;
+    --gold-deep: #b45309;
+    --gold-soft: #fef9c3;
+    --row-stripe: #fafbfd;
+    --row-hover: #eff6ff;
+    --shadow-sm: 0 1px 2px rgba(15,23,42,.06);
+    --shadow: 0 4px 12px rgba(15,23,42,.08);
+    --shadow-lg: 0 16px 32px rgba(15,23,42,.18);
+    --th-h-1: 32px;
+    --th-h-2: 30px;
+    --th-h-3: 30px;
+    --th-h-4: 30px;
+    --topbar-h: 56px;
+    --filter-h: 64px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
-    font: 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+    font: 13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif;
+    font-feature-settings: "tnum" 1, "ss01" 1; }
+  table { font-variant-numeric: tabular-nums; }
   button { font: inherit; cursor: pointer; }
-  .app { max-width: 1400px; margin: 0 auto; padding: 16px; }
+  input, select { font: inherit; }
+  .app { max-width: 1480px; margin: 0 auto; padding: 0 20px 24px; }
 
-  /* === Header === */
-  .topbar { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
-  .topbar h1 { font-size: 18px; margin: 0; flex: 1; }
-  .topbar .ver { color: var(--muted); font-size: 12px; }
-  .btn { background: #fff; border: 1px solid var(--border-strong); border-radius: 6px;
-    padding: 6px 12px; color: var(--text); transition: all .15s; }
-  .btn:hover { border-color: var(--primary); color: var(--primary); }
-  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-  .btn.primary:hover { background: #1d4ed8; }
-  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
-  .btn.ghost:hover { color: var(--primary); background: var(--primary-50); }
+  /* === Sticky top stack === */
+  .sticky-top {
+    position: sticky; top: 0; z-index: 50;
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 70%, rgba(244,246,251,0) 100%);
+    padding-top: 16px;
+    margin: 0 -20px; padding-left: 20px; padding-right: 20px;
+  }
+  .topbar { display: flex; align-items: center; gap: 12px; min-height: var(--topbar-h); padding: 0; }
+  .topbar h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  .topbar .sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .topbar .grow { flex: 1; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .v-banner { background: var(--danger-soft); color: var(--danger); padding: 6px 12px; border-radius: var(--r-md);
+    font-size: 12px; display: flex; align-items: center; gap: 6px; box-shadow: var(--shadow-sm); }
+  .v-banner b { font-weight: 600; }
+
+  /* === Buttons === */
+  .btn { background: #fff; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+    padding: 5px 12px; color: var(--text); transition: all .12s; display: inline-flex; align-items: center; gap: 5px; line-height: 1.4; }
+  .btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 1px 0 rgba(0,0,0,.05); }
+  .btn.primary:hover { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-soft); padding: 5px 8px; }
+  .btn.ghost:hover { color: var(--primary); background: var(--primary-50); border-color: transparent; }
   .btn.sm { padding: 3px 8px; font-size: 12px; }
+  .btn.icon { padding: 4px 7px; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn .badge { background: var(--primary-100); color: var(--primary-600); border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 600; }
 
   /* === Filter bar === */
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
-  .filterbar { padding: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+  .filterbar { padding: 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 12px; }
   .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .field > label { font-size: 11px; color: var(--muted); }
-  .field-input { display: flex; align-items: center; gap: 6px; padding: 5px 8px; min-height: 28px;
-    border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; min-width: 180px; cursor: pointer; }
-  .field-input.active { border-color: var(--primary); }
+  .field > label { font-size: 11px; color: var(--text-soft); font-weight: 500; }
+  .field-input { display: flex; align-items: center; gap: 6px; padding: 5px 9px; min-height: 30px;
+    border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: #fff; min-width: 200px; cursor: pointer; transition: border-color .12s; }
+  .field-input:hover { border-color: var(--primary); }
+  .field-input.active, .field-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
   .field-input input { border: 0; outline: 0; background: transparent; flex: 1; font: inherit; min-width: 60px; }
-  .chip { background: var(--primary-50); color: var(--primary); border-radius: 4px; padding: 1px 6px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
-  .chip .x { color: var(--muted); cursor: pointer; }
+  .chip { background: var(--primary-50); color: var(--primary-600); border-radius: 999px; padding: 1px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+  .chip .x { color: var(--muted); cursor: pointer; line-height: 1; padding: 0 2px; }
   .chip .x:hover { color: var(--danger); }
-  .actions { margin-left: auto; display: flex; gap: 8px; }
+  .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
-  /* === Tabs === */
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-top: 12px; padding: 0 12px; background: var(--panel);
-    border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; }
-  .tab { padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
-  .tab.active { color: var(--primary); border-color: var(--primary); font-weight: 500; }
-  .tab .count { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  /* === Version pill === */
+  .ver-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px;
+    border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; cursor: pointer; transition: all .12s; }
+  .ver-pill:hover { border-color: var(--primary); color: var(--primary); }
+  .ver-pill.warn { background: var(--warning-soft); border-color: var(--warning); color: var(--gold-deep); }
+  .ver-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .ver-pill.warn .dot { background: var(--warning); }
+
+  /* === Toolbar (above table) === */
+  .toolbar { display: flex; gap: 12px; align-items: center; padding: 8px 12px; font-size: 12px; color: var(--text-soft);
+    background: var(--panel); border: 1px solid var(--border); border-bottom: 0; border-radius: var(--r-md) var(--r-md) 0 0; margin-top: 12px; }
+  .toolbar .grow { flex: 1; }
+  .toolbar .density { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 4px; overflow: hidden; }
+  .toolbar .density button { border: 0; background: #fff; padding: 3px 8px; color: var(--text-soft); font-size: 11px; border-right: 1px solid var(--border); }
+  .toolbar .density button:last-child { border-right: 0; }
+  .toolbar .density button.on { background: var(--primary); color: #fff; }
+  .toolbar .tot { font-weight: 500; color: var(--text); }
+  .toolbar .tot b { color: var(--primary-600); }
 
   /* === Table === */
-  .tableshell { background: var(--panel); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px;
-    overflow: hidden; }
-  .toolbar { padding: 8px 12px; display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
-  .table-wrap { overflow: auto; max-height: 520px; }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
-  thead th { position: sticky; top: 0; background: #f1f3f7; border-bottom: 1px solid var(--border); padding: 8px 10px;
-    text-align: left; font-weight: 500; white-space: nowrap; user-select: none; }
-  thead th.sortable { cursor: pointer; }
-  thead th .sort { color: var(--muted); margin-left: 4px; font-size: 10px; }
-  thead th.sorted .sort { color: var(--primary); }
-  th.pin-left, td.pin-left { position: sticky; left: 0; background: inherit; z-index: 1; box-shadow: 1px 0 0 var(--border); }
-  th.pin-right, td.pin-right { position: sticky; right: 0; background: inherit; z-index: 1; box-shadow: -1px 0 0 var(--border); }
-  tbody td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; white-space: nowrap; }
-  tbody tr:nth-child(even) { background: var(--row-stripe); }
-  tbody tr:hover { background: var(--row-hover); }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.empty { color: var(--muted); font-style: italic; }
-  .src-badge { display: inline-block; font-size: 10px; padding: 0 4px; border-radius: 3px; vertical-align: middle; margin-left: 4px; }
-  .src-crm { background: #fde7e7; color: #b91c1c; }
-  .src-erp { background: #e0f2fe; color: #075985; }
+  .tableshell { background: var(--panel); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); overflow: hidden; box-shadow: var(--shadow-sm); }
+  .table-wrap { overflow: auto; max-height: 64vh; }
+  table.grid { border-collapse: separate; border-spacing: 0; width: 100%; }
+  table.grid thead th { background: #f1f5fa; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+    padding: 6px 10px; text-align: center; font-weight: 600; white-space: nowrap; user-select: none; color: var(--text);
+    font-size: 12px; position: sticky; z-index: 3; }
+  table.grid thead tr:nth-child(1) th { top: 0; }
+  table.grid thead tr:nth-child(2) th { top: var(--th-h-1); }
+  table.grid thead tr:nth-child(3) th { top: calc(var(--th-h-1) + var(--th-h-2)); }
+  table.grid thead tr:nth-child(4) th { top: calc(var(--th-h-1) + var(--th-h-2) + var(--th-h-3)); }
+  table.grid thead th.leaf { background: #e5edf7; border-bottom: 2px solid #c7d2fe; color: var(--text); }
+  table.grid thead th.leaf.sorted { border-bottom-color: var(--primary); background: linear-gradient(180deg, #dbeafe 0%, #c7d8f5 100%); }
+  table.grid thead th.leaf.filtered .funnel { color: var(--primary); }
+  table.grid thead th.sortable { cursor: pointer; }
+  table.grid thead th.sortable:hover { background: #dbeafe; }
+  table.grid thead th .label-row { display: inline-flex; align-items: center; gap: 4px; }
+  table.grid thead th .arr { color: var(--muted); font-size: 9px; transition: color .12s; }
+  table.grid thead th.sorted .arr { color: var(--primary); }
+  table.grid thead th .funnel { color: var(--muted); font-size: 10px; cursor: pointer; padding: 0 2px; border-radius: 3px; }
+  table.grid thead th .funnel:hover { background: var(--primary-100); color: var(--primary); }
+  table.grid thead th.pin-left,  table.grid tbody td.pin-left  { position: sticky; left: 0; background: inherit; z-index: 2; box-shadow: 1px 0 0 var(--border); }
+  table.grid thead th.pin-left { z-index: 4; }
+  table.grid thead th.pin-right, table.grid tbody td.pin-right { position: sticky; right: 0; background: inherit; z-index: 2; box-shadow: -1px 0 0 var(--border); }
+  table.grid thead th.pin-right { z-index: 4; }
+  table.grid tbody td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; white-space: nowrap; vertical-align: middle; }
+  table.grid tbody tr:nth-child(even) td { background: var(--row-stripe); }
+  table.grid tbody tr.fav td { background: linear-gradient(90deg, rgba(254,243,199,.4) 0%, rgba(254,243,199,0) 100%); }
+  table.grid tbody tr:hover td { background: var(--row-hover); }
+  table.grid tbody tr.fav:hover td { background: linear-gradient(90deg, rgba(254,243,199,.55) 0%, var(--row-hover) 100%); }
+  table.grid.density-compact tbody td { padding: 4px 10px; }
+  table.grid.density-loose tbody td { padding: 11px 10px; }
+  table.grid td.num { text-align: right; }
+  table.grid td.empty { color: var(--muted); font-style: italic; text-align: center; }
+  table.grid td.dim { font-weight: 500; }
+  table.grid td.click { cursor: pointer; color: var(--primary-600); }
+  table.grid td.click:hover { text-decoration: underline; background: var(--primary-50) !important; }
+
+  /* Row star cell */
+  .fav-th, .fav-td { width: 38px; padding: 0 !important; text-align: center !important; background: #f1f5fa !important; }
+  table.grid tbody tr td.fav-td { background: #f8fafc; border-right: 1px solid var(--border); }
+  table.grid tbody tr.fav td.fav-td { background: var(--gold-soft); }
+  table.grid tbody tr:hover td.fav-td { background: var(--primary-50); }
+  table.grid tbody tr.fav:hover td.fav-td { background: var(--gold-soft); }
+  .star { font-size: 17px; line-height: 1; background: transparent; border: 0; padding: 4px; border-radius: 4px;
+    color: #cbd5e1; transition: transform .12s, color .12s; }
+  .star:hover { color: var(--gold); transform: scale(1.18); background: var(--gold-soft); }
+  .star.on { color: var(--gold); text-shadow: 0 0 0 var(--gold-deep), 1px 0 0 var(--gold-deep), -1px 0 0 var(--gold-deep), 0 1px 0 var(--gold-deep), 0 -1px 0 var(--gold-deep); }
+  .star.on:hover { color: var(--gold-deep); }
+
+  /* Source badge in cell */
+  .src-badge { display: inline-block; font-size: 9px; padding: 0 4px; border-radius: 3px; vertical-align: middle; margin-left: 4px; cursor: pointer; }
+  .src-badge:hover { filter: brightness(1.05); }
+  .src-crm { background: #fde2e2; color: #b91c1c; }
+  .src-erp { background: #dbeafe; color: #1d4ed8; }
   .src-wms { background: #dcfce7; color: #166534; }
   .src-csv { background: #fef3c7; color: #92400e; }
-  .pagination { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
-  .pagination .spacer { flex: 1; }
+  .src-compute { background: #ede9fe; color: #6d28d9; }
 
-  /* === Dropdown popup === */
-  .popup { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: 8px;
-    box-shadow: var(--shadow-lg); z-index: 100; min-width: 280px; max-width: 360px; }
-  .popup-head { padding: 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
-  .popup-head input.q { width: 100%; border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 8px; outline: 0; }
-  .popup-head .row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  /* Pagination */
+  .pagination { display: flex; align-items: center; gap: 10px; padding: 8px 12px; color: var(--text-soft); font-size: 12px; border-top: 1px solid var(--border); background: #fbfcfe; }
+  .pagination .spacer { flex: 1; }
+  .pagination select { padding: 3px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; }
+
+  /* === Popup (dropdowns, filter pop, audit pop) === */
+  .popup { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: var(--r-md);
+    box-shadow: var(--shadow-lg); z-index: 100; min-width: 280px; max-width: 380px; }
+  .popup-head { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+  .popup-head input.q { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 5px 9px; outline: 0; transition: all .12s; }
+  .popup-head input.q:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
+  .popup-head .row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-soft); flex-wrap: wrap; }
   .popup-head select { border: 1px solid var(--border-strong); border-radius: 4px; padding: 2px 4px; font: inherit; font-size: 11px; background: #fff; }
-  .popup-body { max-height: 280px; overflow: auto; }
-  .opt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  .popup-body { max-height: 320px; overflow: auto; padding: 4px 0; }
+  .opt { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; font-size: 13px; border-radius: 4px; margin: 0 4px; }
   .opt:hover { background: var(--row-hover); }
-  .opt.sel { background: var(--primary-50); color: var(--primary); }
-  .opt .lbl { flex: 1; }
+  .opt.sel { background: var(--primary-50); color: var(--primary-600); font-weight: 500; }
+  .opt .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .opt .meta { color: var(--muted); font-size: 11px; }
-  .opt .star { color: #d4d4d8; cursor: pointer; font-size: 16px; padding: 0 2px; }
-  .opt .star.on { color: #f59e0b; }
-  .opt .caret { color: var(--muted); }
+  .opt .caret { color: var(--muted); width: 14px; display: inline-block; text-align: center; }
   .opt .indent { display: inline-block; }
   .popup-foot { padding: 6px 10px; border-top: 1px solid var(--border); display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
   .popup-foot .more { color: var(--primary); cursor: pointer; }
 
+  /* Column filter popup */
+  .colfilter { padding: 10px 12px; min-width: 280px; }
+  .colfilter h4 { margin: 0 0 8px; font-size: 12px; color: var(--text-soft); }
+  .colfilter .ctl { display: flex; gap: 6px; margin-bottom: 8px; }
+  .colfilter select, .colfilter input { padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 4px; outline: 0; }
+  .colfilter input:focus, .colfilter select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
+  .colfilter .btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+
   /* === Drawer === */
-  .drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 200; display: none; }
-  .drawer-mask.show { display: block; }
-  .drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 380px; background: #fff;
-    border-left: 1px solid var(--border-strong); box-shadow: -8px 0 24px rgba(0,0,0,.08); z-index: 201;
-    transform: translateX(100%); transition: transform .2s ease; display: flex; flex-direction: column; }
+  .drawer-mask { position: fixed; inset: 0; background: rgba(15,23,42,.32); z-index: 200; opacity: 0; pointer-events: none; transition: opacity .15s; }
+  .drawer-mask.show { opacity: 1; pointer-events: all; }
+  .drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 400px; background: #fff;
+    border-left: 1px solid var(--border-strong); box-shadow: -12px 0 32px rgba(15,23,42,.16); z-index: 201;
+    transform: translateX(100%); transition: transform .22s cubic-bezier(.2,.7,.2,1); display: flex; flex-direction: column; }
   .drawer.show { transform: translateX(0); }
-  .drawer-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .drawer-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
   .drawer-head h2 { margin: 0; font-size: 15px; flex: 1; }
   .drawer-body { padding: 8px 0; overflow: auto; flex: 1; }
-  .drawer-foot { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
-  .drawer-foot label { margin-right: auto; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  .group { margin: 4px 0; }
-  .group-head { display: flex; align-items: center; gap: 6px; padding: 6px 16px; color: var(--muted); font-size: 11px; font-weight: 500; user-select: none; cursor: pointer; }
-  .group-head .ic { width: 12px; }
-  .group-head .ct { margin-left: auto; }
-  .col-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 4px; }
+  .drawer-foot { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; background: #fbfcfe; }
+  .drawer-foot label { margin-right: auto; font-size: 12px; color: var(--text-soft); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .col-group-head { display: flex; align-items: center; gap: 6px; padding: 6px 16px; color: var(--text-soft);
+    font-size: 11px; font-weight: 600; user-select: none; cursor: pointer; text-transform: uppercase; letter-spacing: .04em; }
+  .col-group-head.lvl-2 { padding-left: 28px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--text-soft); }
+  .col-group-head.lvl-3 { padding-left: 40px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--muted); }
+  .col-group-head .ct { margin-left: auto; font-weight: 500; color: var(--muted); }
+  .col-row { display: flex; align-items: center; gap: 8px; padding: 5px 16px 5px 28px; border-radius: 4px; margin: 0 6px; }
+  .col-row.lvl-2 { padding-left: 40px; }
+  .col-row.lvl-3 { padding-left: 52px; }
   .col-row:hover { background: var(--row-hover); }
-  .col-row .grip { color: var(--border-strong); cursor: grab; user-select: none; }
   .col-row input[type=checkbox] { accent-color: var(--primary); }
   .col-row .lbl { flex: 1; }
   .col-row .lbl.dim { color: var(--muted); }
-  .col-row .pin { font-size: 13px; color: var(--muted); cursor: pointer; padding: 0 4px; }
-  .col-row .pin.on { color: var(--primary); }
-  .col-row .ord-btns { display: flex; flex-direction: column; gap: 1px; }
-  .col-row .ord-btns button { border: 0; background: transparent; padding: 0 2px; color: var(--muted); cursor: pointer; line-height: 1; font-size: 11px; }
+  .col-row .pin { font-size: 12px; color: var(--muted); cursor: pointer; padding: 2px 5px; border-radius: 4px; }
+  .col-row .pin.on { color: var(--primary); background: var(--primary-50); }
+  .col-row .pin:hover { color: var(--primary); }
+  .col-row .ord-btns { display: flex; flex-direction: column; gap: 0; }
+  .col-row .ord-btns button { border: 0; background: transparent; padding: 0 3px; color: var(--muted); cursor: pointer; line-height: 1; font-size: 10px; }
   .col-row .ord-btns button:hover { color: var(--primary); }
+  .col-row .tag { font-size: 10px; padding: 0 5px; border-radius: 3px; background: var(--primary-100); color: var(--primary-600); }
 
-  /* === Source mark widget (admin demo) === */
-  .audit-pop { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg);
-    z-index: 300; min-width: 320px; padding: 10px 12px; font-size: 12px; }
+  /* === Modal (drilldown) === */
+  .modal-mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 300; display: none; align-items: center; justify-content: center; }
+  .modal-mask.show { display: flex; }
+  .modal { background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow-lg); max-width: 1100px; width: 90%;
+    max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); }
+  .modal-head h2 { margin: 0; font-size: 15px; flex: 1; }
+  .modal-head .sub { color: var(--muted); font-size: 12px; }
+  .modal-body { padding: 12px 18px; overflow: auto; flex: 1; }
+  .modal-body .modal-table-wrap { max-height: 56vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
+  .modal-foot { padding: 10px 18px; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; color: var(--text-soft); font-size: 12px; background: #fbfcfe; }
+
+  /* Audit popup */
+  .audit-pop { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: var(--shadow-lg);
+    z-index: 320; min-width: 340px; padding: 12px 14px; font-size: 12px; }
   .audit-pop h4 { margin: 0 0 8px; font-size: 13px; }
   .audit-pop ul { margin: 0; padding: 0; list-style: none; }
-  .audit-pop li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .audit-pop li { display: flex; gap: 6px; align-items: center; padding: 5px 0; border-bottom: 1px dashed var(--border); }
   .audit-pop li:last-child { border: 0; }
-  .audit-pop .ver { font-variant-numeric: tabular-nums; }
-  .audit-pop .ok  { color: var(--success); }
-  .audit-pop .bad { color: var(--danger); }
+  .audit-pop .spacer { flex: 1; }
+  .audit-pop .ok  { color: var(--success); font-weight: 600; }
+  .audit-pop .bad { color: var(--danger); font-weight: 600; text-decoration: line-through; }
+  .audit-pop .ver { font-variant-numeric: tabular-nums; color: var(--text-soft); }
 
-  /* Misc */
-  .kbd { background: #f1f3f7; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
-    padding: 0 4px; font-family: ui-monospace,SFMono-Regular,Consolas,monospace; font-size: 11px; color: var(--muted); }
-  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1f2330; color: #fff;
-    padding: 8px 14px; border-radius: 6px; z-index: 500; box-shadow: var(--shadow-lg); font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s; }
-  .toast.show { opacity: 1; }
+  /* === Misc === */
+  .kbd { background: #f1f5fa; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
+    padding: 0 5px; font-family: ui-monospace,SFMono-Regular,Consolas,monospace; font-size: 11px; color: var(--text-soft); }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: #0f172a; color: #fff;
+    padding: 8px 14px; border-radius: var(--r-md); z-index: 500; box-shadow: var(--shadow-lg); font-size: 12px;
+    opacity: 0; pointer-events: none; transition: all .25s ease; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .audit-mini-help { color: var(--muted); font-size: 11px; }
+  .empty-state { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+  /* X close button uniform */
+  .x-close { width: 28px; height: 28px; padding: 0; border-radius: 4px; }
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- Header -->
-  <div class="topbar">
-    <h1 id="reportTitle">每日销售报表</h1>
-    <span class="ver" id="cfgVer"></span>
-    <button class="btn" id="btnFlow" title="管理员：人工标记来源">⚙ 来源版本</button>
-    <button class="btn" id="btnCols">≡ 列配置</button>
+
+  <!-- ─────── Sticky top ─────── -->
+  <div class="sticky-top">
+    <header class="topbar">
+      <h1 id="reportTitle">每日销售报表</h1>
+      <span class="sub" id="cfgVer"></span>
+      <span class="grow"></span>
+      <div class="topbar-right">
+        <span class="ver-pill" id="verPill" title="点击切换报表版本">
+          <span class="dot"></span><span id="verLabel">v3 · 最新</span> ▾
+        </span>
+        <button class="btn" id="btnCols">≡ 列配置</button>
+      </div>
+    </header>
+    <div id="warningBanner" style="display:none;"></div>
+    <div class="panel filterbar" id="filterBar"></div>
   </div>
 
-  <!-- Filter bar -->
-  <div class="panel filterbar" id="filterBar"></div>
-
-  <!-- Tabs -->
-  <div class="tabs" id="tabs"></div>
-
-  <!-- Table -->
+  <!-- ─────── Toolbar + Table ─────── -->
+  <div class="toolbar">
+    <span id="rowMeta">—</span>
+    <span class="grow"></span>
+    <span class="audit-mini-help">数字单元格点击 <span class="kbd">下钻</span> · 表头 <span class="kbd">▽</span> 按列筛选 · 行首 <span class="kbd">★</span> 收藏置顶</span>
+    <span style="margin-left: 12px;">行密度</span>
+    <span class="density" id="density">
+      <button data-d="compact">紧凑</button>
+      <button data-d="normal" class="on">默认</button>
+      <button data-d="loose">宽松</button>
+    </span>
+  </div>
   <div class="tableshell">
-    <div class="toolbar">
-      <span id="rowMeta"></span>
-      <span class="spacer"></span>
-      <span>提示：表头点击排序；<span class="kbd">⭐</span> 收藏；维度/度量列可在右侧 <span class="kbd">≡ 列配置</span> 调整</span>
-    </div>
-    <div class="table-wrap"><table id="table"></table></div>
+    <div class="table-wrap" id="tableWrap"><table class="grid" id="table"></table></div>
     <div class="pagination" id="pagination"></div>
   </div>
 </div>
 
-<!-- Drawer for column config -->
+<!-- ─────── Drawer (column config) ─────── -->
 <div class="drawer-mask" id="drawerMask"></div>
 <aside class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-head">
     <h2>列配置</h2>
     <button class="btn sm ghost" id="btnRestoreDefault">恢复默认</button>
-    <button class="btn sm ghost" id="btnDrawerClose">✕</button>
+    <button class="btn ghost x-close" id="btnDrawerClose">✕</button>
   </div>
   <div class="drawer-body" id="drawerBody"></div>
   <div class="drawer-foot">
@@ -199,294 +329,355 @@
   </div>
 </aside>
 
+<!-- ─────── Modal (drilldown) ─────── -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">明细</h2>
+      <span class="sub" id="modalSub"></span>
+      <button class="btn ghost x-close" id="btnModalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-table-wrap" id="modalTableWrap"><table class="grid" id="modalTable"></table></div>
+    </div>
+    <div class="modal-foot">
+      <span id="modalRowMeta">—</span>
+      <span class="grow" style="flex:1;"></span>
+      <div id="modalPagination"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-/* =====================================================================
-   Mock config —— 模拟 GET /api/reports/daily_sales/config 的响应。
-   未来由真实后端按 02-data-model + 03-api-spec 组装。
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   MOCK CONFIG (response of GET /api/reports/daily_sales/config)
+   ════════════════════════════════════════════════════════════════════ */
 const MOCK_CONFIG = {
   meta: {
     report_type: "daily_sales",
     name: "每日销售报表",
-    version: 17,
-    summary_endpoint: "/api/reports/daily_sales/summary",
-    detail_endpoint:  "/api/reports/daily_sales/detail",
+    version: 18,
     user_pref_endpoint: "/api/users/me/columns/daily_sales"
   },
+  primary_keys: ["region_code", "product_code"],
+  version: {
+    endpoint: "/api/reports/daily_sales/versions",
+    param: "version", default: "latest", policy: "latest_per_day"
+  },
   filters: [
-    {
-      code: "business_date", label: "业务日期", kind: "date_range",
-      required: true, default: { from: "2026-05-13", to: "2026-05-13" },
-      param: { from: "date_from", to: "date_to" }
+    { code:"business_date", label:"业务日期", kind:"date_range",
+      required:true, default:{from:"2026-05-13",to:"2026-05-13"},
+      param:{from:"date_from",to:"date_to"} },
+    { code:"region", label:"区域", kind:"hierarchy_dropdown",
+      param:{value:"region_code"},
+      source:{ endpoint:"/api/dropdowns/region_tree", paging:{enabled:true,page_size:50},
+        sortable_by:["label","usage_count","is_favorite"],
+        default_sort:[{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        supports_favorite:true, params_in:["parent","q","page","page_size","sort","only_favorites"]} },
+    { code:"product", label:"产品", kind:"search_dropdown",
+      param:{value:"product_code"}, depends_on:["region"],
+      source:{ endpoint:"/api/dropdowns/product_search", paging:{enabled:true,page_size:30},
+        sortable_by:["label","sales_rank"], default_sort:[{field:"sales_rank",dir:"desc"}],
+        supports_favorite:true, params_in:["q","page","page_size","sort","region_code"]} }
+  ],
+  primary_view: {
+    endpoint: "/api/reports/daily_sales/summary",
+    sortable: true, paging:{ enabled:true, default_page_size:50 },
+    row_favorite: { enabled:true, endpoint:"/api/users/me/row_favorites/daily_sales", sort_on_top:true }
+  },
+
+  /* ===== 多层表头树：维度(1层) / 销售(3-4层) / 库存(2层) ===== */
+  columns: { summary: { header_tree: [
+    { code:"_dim", label:"维度", children: [
+      { code:"region_code", label:"区域", data_type:"string",
+        is_default_visible:true, default_order:1, default_pinned:"left", default_width:160,
+        sortable:true, row_filterable:true, display:{kind:"text"} },
+      { code:"product_code", label:"产品", data_type:"string",
+        is_default_visible:true, default_order:2, default_width:140,
+        sortable:true, row_filterable:true, display:{kind:"text"} }
+    ]},
+    { code:"_sales", label:"销售", children: [
+      { code:"_gmv", label:"GMV (¥)", children: [
+        { code:"_online", label:"线上", children: [
+          { code:"gmv_app", label:"APP",    data_type:"decimal",
+            is_default_visible:true, default_order:10, sortable:true, row_filterable:true,
+            drilldown:{ref:"orders_drilldown"},
+            display:{kind:"number", precision:0, thousand:true, unit:"¥"} },
+          { code:"gmv_web", label:"Web",    data_type:"decimal",
+            is_default_visible:true, default_order:11, sortable:true,
+            drilldown:{ref:"orders_drilldown"},
+            display:{kind:"number", precision:0, thousand:true, unit:"¥"} },
+          { code:"gmv_mp",  label:"小程序", data_type:"decimal",
+            is_default_visible:false, default_order:12, sortable:true,
+            drilldown:{ref:"orders_drilldown"},
+            display:{kind:"number", precision:0, thousand:true, unit:"¥"} }
+        ]},
+        { code:"_offline", label:"线下", children: [
+          { code:"gmv_store", label:"门店", data_type:"decimal",
+            is_default_visible:true, default_order:20, sortable:true,
+            drilldown:{ref:"orders_drilldown"},
+            display:{kind:"number", precision:0, thousand:true, unit:"¥"} }
+        ]}
+      ]},
+      { code:"_indicators", label:"指标", children: [
+        { code:"orders", label:"订单数", data_type:"int",
+          is_default_visible:true, default_order:30, sortable:true, row_filterable:true,
+          drilldown:{ref:"orders_drilldown"},
+          display:{kind:"number"} },
+        { code:"conv_rate", label:"转化率", data_type:"decimal",
+          is_default_visible:true, default_order:31, sortable:true, row_filterable:true,
+          display:{kind:"percent", precision:1} },
+        { code:"refund", label:"退款金额", data_type:"decimal",
+          is_default_visible:false, default_order:32,
+          drilldown:{ref:"orders_drilldown"},
+          display:{kind:"number", precision:0, thousand:true, unit:"¥"} }
+      ]}
+    ]},
+    { code:"_stock", label:"库存", children: [
+      { code:"stock", label:"库存量", data_type:"int",
+        is_default_visible:true, default_order:40, sortable:true, row_filterable:true,
+        drilldown:{ref:"stock_drilldown"}, display:{kind:"number"} },
+      { code:"safe_days", label:"安全天数", data_type:"decimal",
+        is_default_visible:false, default_order:41, sortable:true,
+        display:{kind:"number", precision:1} }
+    ]}
+  ]}},
+
+  drilldowns: {
+    orders_drilldown: {
+      title: "订单明细 — {row.region_label} / {row.product_code} / {cell.column} / {filter.business_date.from}",
+      endpoint: "/api/reports/daily_sales/detail", method: "POST",
+      param_mapping: {
+        "row.region_code": "region_code",
+        "row.product_code":"product_code",
+        "cell.column": "metric"
+      },
+      paging:{ enabled:true, default_page_size:30 },
+      supports_row_favorite:false,
+      header_tree: [
+        { code:"_dim", label:"订单", children:[
+          { code:"order_id",    label:"订单号", data_type:"string", is_default_visible:true, default_order:1, sortable:false, default_pinned:"left", display:{kind:"text"} },
+          { code:"order_time",  label:"下单时间", data_type:"datetime", is_default_visible:true, default_order:2, sortable:true, display:{kind:"text"} },
+          { code:"channel",     label:"渠道", data_type:"string", is_default_visible:true, default_order:3, sortable:true, display:{kind:"text"} }
+        ]},
+        { code:"_amt", label:"金额", children:[
+          { code:"order_amount", label:"金额", data_type:"decimal", is_default_visible:true, default_order:4, sortable:true, display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
+          { code:"discount",     label:"折扣", data_type:"decimal", is_default_visible:true, default_order:5, sortable:true, display:{kind:"number", precision:2, thousand:true, unit:"¥"} }
+        ]},
+        { code:"_user", label:"用户", children:[
+          { code:"user_id",   label:"用户ID", data_type:"string", is_default_visible:true, default_order:6, display:{kind:"text"} },
+          { code:"user_tier", label:"等级",   data_type:"string", is_default_visible:true, default_order:7, display:{kind:"text"} }
+        ]}
+      ]
     },
-    {
-      code: "region", label: "区域", kind: "hierarchy_dropdown",
-      param: { value: "region_code" },
-      source: {
-        endpoint: "/api/dropdowns/region_tree",
-        paging: { enabled: true, page_size: 50 },
-        sortable_by: ["label", "usage_count", "is_favorite"],
-        default_sort: [{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
-        supports_favorite: true, supports_filter: true,
-        params_in: ["parent","q","page","page_size","sort","only_favorites"]
-      }
-    },
-    {
-      code: "product", label: "产品", kind: "search_dropdown",
-      param: { value: "product_code" },
-      depends_on: ["region"],
-      source: {
-        endpoint: "/api/dropdowns/product_search",
-        paging: { enabled: true, page_size: 30 },
-        sortable_by: ["label","sales_rank"],
-        default_sort: [{field:"sales_rank",dir:"desc"}],
-        supports_favorite: true, supports_filter: false,
-        params_in: ["q","page","page_size","sort","region_code"]
-      }
+    stock_drilldown: {
+      title: "库存明细 — {row.region_label}",
+      endpoint: "/api/reports/daily_sales/stock_detail", method:"POST",
+      param_mapping:{ "row.region_code":"region_code" },
+      paging:{enabled:true, default_page_size:30},
+      header_tree: [
+        { code:"_dim", label:"库存", children:[
+          { code:"warehouse", label:"仓库", data_type:"string", is_default_visible:true, default_order:1, default_pinned:"left", display:{kind:"text"} },
+          { code:"sku",       label:"SKU",  data_type:"string", is_default_visible:true, default_order:2, display:{kind:"text"} },
+          { code:"qty",       label:"在库", data_type:"int", is_default_visible:true, default_order:3, sortable:true, display:{kind:"number"} },
+          { code:"reserved",  label:"占用", data_type:"int", is_default_visible:true, default_order:4, sortable:true, display:{kind:"number"} }
+        ]}
+      ]
     }
-  ],
-  tabs: [
-    { code:"summary", label:"汇总", endpoint:"/api/reports/daily_sales/summary",
-      sortable:true, paging:{enabled:true, default_page_size:50} },
-    { code:"detail",  label:"详情", endpoint:"/api/reports/daily_sales/detail",
-      sortable:true, paging:{enabled:true, default_page_size:100} }
-  ],
-  columns: {
-    summary: [
-      { code:"region_code", label:"区域",   data_type:"string",  group:"维度",
-        is_default_visible:true,  default_order:1,  default_width:120, default_pinned:"left",
-        sortable:true, filterable:true,  display:{kind:"text"} },
-      { code:"product_code", label:"产品",  data_type:"string",  group:"维度",
-        is_default_visible:true,  default_order:2,  default_width:120,
-        sortable:true, display:{kind:"text"} },
-      { code:"gmv",          label:"GMV",  data_type:"decimal", group:"度量",
-        is_default_visible:true,  default_order:5,  default_width:140, default_pinned:"right",
-        sortable:true, display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
-      { code:"orders",       label:"订单数", data_type:"int",    group:"度量",
-        is_default_visible:true,  default_order:6,  sortable:true,
-        display:{kind:"number"} },
-      { code:"refund",       label:"退款金额", data_type:"decimal", group:"度量",
-        is_default_visible:false, default_order:7,
-        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
-      { code:"conv_rate",    label:"转化率", data_type:"decimal", group:"度量",
-        is_default_visible:true,  default_order:8,
-        display:{kind:"percent", precision:1} },
-      { code:"avg_price",    label:"客单价", data_type:"decimal", group:"度量",
-        is_default_visible:false, default_order:9,
-        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
-      { code:"stock",        label:"库存量",  data_type:"int",    group:"度量",
-        is_default_visible:false, default_order:10,
-        display:{kind:"number"} },
-      { code:"safe_days",    label:"安全库存天数", data_type:"decimal", group:"高级",
-        is_default_visible:false, default_order:11,
-        display:{kind:"number", precision:1} },
-      { code:"gmv_qoq",      label:"GMV同比", data_type:"decimal", group:"高级",
-        is_default_visible:false, default_order:12,
-        display:{kind:"percent", precision:1} }
-    ],
-    detail: [
-      { code:"region_code", label:"区域", data_type:"string", group:"维度",
-        is_default_visible:true, default_order:1, default_pinned:"left",
-        sortable:true, display:{kind:"text"} },
-      { code:"product_code", label:"产品", data_type:"string", group:"维度",
-        is_default_visible:true, default_order:2, sortable:true, display:{kind:"text"} },
-      { code:"order_id",    label:"订单号", data_type:"string", group:"维度",
-        is_default_visible:true, default_order:3, sortable:false, display:{kind:"text"} },
-      { code:"order_amount", label:"金额", data_type:"decimal", group:"度量",
-        is_default_visible:true, default_order:4, sortable:true,
-        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
-      { code:"order_time",  label:"下单时间", data_type:"datetime", group:"维度",
-        is_default_visible:true, default_order:5, sortable:true, display:{kind:"text"} },
-      { code:"channel",     label:"渠道", data_type:"string", group:"维度",
-        is_default_visible:false, default_order:6, display:{kind:"text"} }
-    ]
   }
 };
 
-/* =====================================================================
-   Mock dropdown sources
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   Mock data sources (dropdowns, versions, fact rows, drilldown rows)
+   ════════════════════════════════════════════════════════════════════ */
 const MOCK_REGIONS = {
-  // 层级：null(顶层) → 大区 → 省 → 市
-  null: [
-    { value:"CN",  label:"中国", has_children:true,  usage_count:9999 },
-  ],
-  "CN": [
+  null: [{ value:"CN", label:"中国", has_children:true, usage_count:9999 }],
+  "CN":[
     { value:"CN-EAST",  label:"华东",  has_children:true, usage_count:800 },
     { value:"CN-SOUTH", label:"华南",  has_children:true, usage_count:600 },
     { value:"CN-NORTH", label:"华北",  has_children:true, usage_count:500 },
-    { value:"CN-WEST",  label:"西部",  has_children:true, usage_count:300 },
+    { value:"CN-WEST",  label:"西部",  has_children:true, usage_count:300 }
   ],
-  "CN-EAST": [
+  "CN-EAST":[
     { value:"CN-31", label:"上海", has_children:false, usage_count:420 },
     { value:"CN-32", label:"江苏", has_children:true,  usage_count:380 },
     { value:"CN-33", label:"浙江", has_children:true,  usage_count:360 },
     { value:"CN-34", label:"安徽", has_children:true,  usage_count:150 },
-    { value:"CN-35", label:"福建", has_children:true,  usage_count:120 },
+    { value:"CN-35", label:"福建", has_children:true,  usage_count:120 }
   ],
-  "CN-SOUTH": [
+  "CN-SOUTH":[
     { value:"CN-44", label:"广东", has_children:true,  usage_count:550 },
-    { value:"CN-45", label:"广西", has_children:true,  usage_count:90  },
+    { value:"CN-45", label:"广西", has_children:true,  usage_count:90 }
   ],
-  "CN-NORTH": [
+  "CN-NORTH":[
     { value:"CN-11", label:"北京", has_children:false, usage_count:480 },
-    { value:"CN-13", label:"河北", has_children:true,  usage_count:140 },
+    { value:"CN-13", label:"河北", has_children:true,  usage_count:140 }
   ],
-  "CN-32": [
+  "CN-32":[
     { value:"CN-3201", label:"南京", has_children:false, usage_count:130 },
     { value:"CN-3205", label:"苏州", has_children:false, usage_count:210 },
-    { value:"CN-3206", label:"无锡", has_children:false, usage_count:90  },
+    { value:"CN-3206", label:"无锡", has_children:false, usage_count:90 }
   ]
 };
-const MOCK_PRODUCTS = {
-  any: [
-    { value:"P001", label:"P001 · 拿铁咖啡 250ml", sales_rank:1 },
-    { value:"P002", label:"P002 · 美式咖啡 250ml", sales_rank:2 },
-    { value:"P003", label:"P003 · 卡布奇诺 250ml", sales_rank:3 },
-    { value:"P004", label:"P004 · 摩卡咖啡 350ml", sales_rank:4 },
-    { value:"P005", label:"P005 · 燕麦拿铁 250ml", sales_rank:5 },
-    { value:"P006", label:"P006 · 椰香拿铁 350ml", sales_rank:6 },
-    { value:"P007", label:"P007 · 焦糖玛奇朵 350ml", sales_rank:7 },
-    { value:"P008", label:"P008 · 抹茶拿铁 350ml", sales_rank:8 },
-    { value:"P009", label:"P009 · 茉莉花茶 500ml", sales_rank:9 },
-    { value:"P010", label:"P010 · 红茶玛奇朵 350ml", sales_rank:10 },
-    { value:"P011", label:"P011 · 蜜桃乌龙 500ml", sales_rank:11 },
-    { value:"P012", label:"P012 · 椰汁西米露 350ml", sales_rank:12 },
-  ]
-};
+const MOCK_PRODUCTS = [
+  {value:"P001",label:"P001 · 拿铁咖啡 250ml",       sales_rank:1},
+  {value:"P002",label:"P002 · 美式咖啡 250ml",       sales_rank:2},
+  {value:"P003",label:"P003 · 卡布奇诺 250ml",       sales_rank:3},
+  {value:"P004",label:"P004 · 摩卡咖啡 350ml",       sales_rank:4},
+  {value:"P005",label:"P005 · 燕麦拿铁 250ml",       sales_rank:5},
+  {value:"P006",label:"P006 · 椰香拿铁 350ml",       sales_rank:6},
+  {value:"P007",label:"P007 · 焦糖玛奇朵 350ml",     sales_rank:7},
+  {value:"P008",label:"P008 · 抹茶拿铁 350ml",       sales_rank:8},
+  {value:"P009",label:"P009 · 茉莉花茶 500ml",       sales_rank:9},
+  {value:"P010",label:"P010 · 红茶玛奇朵 350ml",     sales_rank:10},
+  {value:"P011",label:"P011 · 蜜桃乌龙 500ml",       sales_rank:11},
+  {value:"P012",label:"P012 · 椰汁西米露 350ml",     sales_rank:12}
+];
+const MOCK_VERSIONS = [
+  { business_date:"2026-05-13", version_no:3, is_latest:true,  status:"active",     generated_at:"2026-05-13 14:02", generated_by:"reconcile",   note:"补抓 wms 后重算" },
+  { business_date:"2026-05-13", version_no:2, is_latest:false, status:"superseded", generated_at:"2026-05-13 09:21", generated_by:"scheduler",   note:"" },
+  { business_date:"2026-05-13", version_no:1, is_latest:false, status:"superseded", generated_at:"2026-05-13 02:00", generated_by:"scheduler",   note:"" }
+];
 
-/* =====================================================================
-   Mock fact data (after merger) —— 每一格附 source_snapshot_ids
-   ===================================================================== */
-const SRC = (s, vno) => ({source:s, vno, valid:true});
-function mockSummaryRows() {
-  const regions = ["CN-31","CN-3205","CN-44","CN-11"];
-  const regionLabel = {"CN-31":"上海","CN-3205":"苏州","CN-44":"广东","CN-11":"北京"};
-  const products = ["P001","P002","P003","P004","P005","P006","P007","P008"];
-  const rows = [];
-  for (const r of regions) for (const p of products) {
-    const gmv = +(Math.random()*15000 + 800).toFixed(2);
-    const orders = Math.floor(Math.random()*60 + 5);
+const SRC = (s,v) => ({source:s,vno:v,valid:true});
+function genFactRows(versionAdj) {
+  const regions=["CN-31","CN-3205","CN-44","CN-11"];
+  const labels={"CN-31":"上海","CN-3205":"苏州","CN-44":"广东","CN-11":"北京"};
+  const prods=["P001","P002","P003","P004","P005","P006","P007","P008"];
+  const rows=[];
+  for (const r of regions) for (const p of prods) {
+    const seed = (r+p).split("").reduce((a,c)=>a+c.charCodeAt(0),0) + versionAdj*97;
+    const rand = (n) => ((seed * (n+1)) % 9973) / 9973;
+    const gmv_app = Math.round(1200 + rand(1)*12000);
+    const gmv_web = Math.round(700  + rand(2)*9000);
+    const gmv_mp  = Math.round(300  + rand(3)*5500);
+    const gmv_store = Math.round(900 + rand(4)*8000);
+    const orders = Math.floor(20 + rand(5)*120);
     rows.push({
-      region_code: r, region_label: regionLabel[r],
-      product_code: p,
-      gmv, orders,
-      refund:    +(gmv * (0.01+Math.random()*0.04)).toFixed(2),
-      conv_rate: +(Math.random()*4 + 1).toFixed(2),       // 百分比，存原值
-      avg_price: +(gmv/orders).toFixed(2),
-      stock:     Math.floor(Math.random()*500 + 50),
-      safe_days: +(Math.random()*15 + 3).toFixed(1),
-      gmv_qoq:   +(Math.random()*30 - 5).toFixed(2),
+      region_code: r, region_label: labels[r], product_code: p,
+      gmv_app, gmv_web, gmv_mp, gmv_store, orders,
+      conv_rate: +(1 + rand(6)*5).toFixed(2),
+      refund: Math.round(rand(7)*1200),
+      stock: Math.floor(60 + rand(8)*440),
+      safe_days: +(2 + rand(9)*15).toFixed(1),
+      _row_key: { region_code:r, product_code:p },
       _audit: {
-        gmv:     [SRC("crm",3), {source:"erp",vno:2,valid:false}],
-        orders:  [SRC("erp",2)],
-        refund:  [SRC("erp",2)],
-        stock:   [SRC("wms",1)],
+        gmv_app:   [SRC("crm",3), {source:"erp",vno:2,valid:false}],
+        gmv_web:   [SRC("crm",3)],
+        gmv_mp:    [SRC("crm",3)],
+        gmv_store: [SRC("erp",2)],
+        orders:    [SRC("erp",2)],
+        refund:    [SRC("erp",2)],
+        stock:     [SRC("wms",1)],
         safe_days: [SRC("compute",1)]
       }
     });
   }
   return rows;
 }
-function mockDetailRows() {
+const FACT_BY_VERSION = {
+  3: genFactRows(0), 2: genFactRows(1), 1: genFactRows(2)
+};
+function genOrders(region, product, n=80) {
   const rows = [];
-  for (let i=0; i<120; i++) {
+  const tiers = ["普通","白银","黄金","钻石"];
+  const channels = ["APP","Web","小程序","门店"];
+  for (let i=0; i<n; i++) {
     rows.push({
-      region_code: ["CN-31","CN-3205","CN-44","CN-11"][i%4],
-      product_code: "P00" + ((i%8)+1),
-      order_id: "OD" + (202605130000 + i),
-      order_amount: +(Math.random()*1200 + 50).toFixed(2),
-      order_time: "2026-05-13 " + String(8 + (i%14)).padStart(2,"0") + ":" + String((i*7)%60).padStart(2,"0"),
-      channel: ["线上","门店","小程序","三方"][i%4]
+      order_id: "OD" + (202605130000 + Math.floor(Math.random()*99999)),
+      order_time: "2026-05-13 " + String(8+(i%14)).padStart(2,"0") + ":" + String((i*13)%60).padStart(2,"0"),
+      channel: channels[i%4],
+      order_amount: +(Math.random()*900 + 50).toFixed(2),
+      discount: +(Math.random()*50).toFixed(2),
+      user_id: "U" + (10000 + i),
+      user_tier: tiers[i%4],
+      region_code: region, product_code: product
     });
   }
   return rows;
 }
-const MOCK_SUMMARY = mockSummaryRows();
-const MOCK_DETAIL  = mockDetailRows();
+function genStock(region, n=50) {
+  const rows = [];
+  const wh = ["WH-华东1","WH-华东2","WH-华南1","WH-华北1"];
+  for (let i=0;i<n;i++) {
+    rows.push({
+      warehouse: wh[i%4], sku: "SKU-" + (10000+i),
+      qty: Math.floor(Math.random()*500), reserved: Math.floor(Math.random()*50)
+    });
+  }
+  return rows;
+}
 
-/* =====================================================================
-   Mock fetch (替换为真 fetch 即可)
-   ===================================================================== */
-function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
-async function api(path, params={}){
-  await delay(60);   // 模拟网络
-  // /api/dropdowns/region_tree
+/* ════════════════════════════════════════════════════════════════════
+   Mock API
+   ════════════════════════════════════════════════════════════════════ */
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+const FAV = { region_tree:{"CN-31":true}, product_search:{"P001":true} };
+const ROW_FAV = new Set(["CN-31|P001","CN-44|P003"]);  // 已收藏的业务键
+const USER_PREFS = { summary: [], detail: [] };
+
+async function api(path, params={}) {
+  await delay(40);
+  // Dropdowns
   if (path === "/api/dropdowns/region_tree") {
     const parent = params.parent ?? null;
     let items = (MOCK_REGIONS[parent] ?? []).slice();
     if (params.q) items = items.filter(x => x.label.includes(params.q));
     items = items.map(x => ({...x, is_favorite: !!FAV.region_tree[x.value]}));
     if (params.only_favorites) items = items.filter(x => x.is_favorite);
-    if (params.sort) {
-      const sorters = params.sort.split(",").map(s => s.split(":"));
-      items.sort((a,b) => {
-        for (const [f,d] of sorters) {
-          const av = f==="is_favorite" ? (a.is_favorite?1:0) : (a[f] ?? a.label);
-          const bv = f==="is_favorite" ? (b.is_favorite?1:0) : (b[f] ?? b.label);
-          if (av<bv) return d==="asc"?-1:1;
-          if (av>bv) return d==="asc"?1:-1;
-        }
-        return 0;
-      });
-    }
-    const ps = params.page_size ?? 50, pg = params.page ?? 1;
-    const total = items.length;
-    items = items.slice((pg-1)*ps, pg*ps);
-    return { items, page: pg, page_size: ps, total, has_more: pg*ps<total };
+    items = sortBy(items, params.sort, ["label"]);
+    return paged(items, params, 50);
   }
-  // /api/dropdowns/product_search
   if (path === "/api/dropdowns/product_search") {
-    let items = MOCK_PRODUCTS.any.slice();
+    let items = MOCK_PRODUCTS.map(x => ({...x, is_favorite: !!FAV.product_search[x.value]}));
     if (params.q) items = items.filter(x => x.label.includes(params.q) || x.value.includes(params.q.toUpperCase()));
-    items = items.map(x => ({...x, is_favorite: !!FAV.product_search[x.value]}));
-    if (params.sort) {
-      const sorters = params.sort.split(",").map(s => s.split(":"));
-      items.sort((a,b) => {
-        for (const [f,d] of sorters) {
-          const av = a[f] ?? 0, bv = b[f] ?? 0;
-          if (av<bv) return d==="asc"?-1:1;
-          if (av>bv) return d==="asc"?1:-1;
-        }
-        return 0;
-      });
-    }
-    const ps = params.page_size ?? 30, pg = params.page ?? 1;
-    const total = items.length;
-    items = items.slice((pg-1)*ps, pg*ps);
-    return { items, page: pg, page_size: ps, total, has_more: pg*ps<total };
+    items = sortBy(items, params.sort, ["sales_rank"]);
+    return paged(items, params, 30);
   }
-  // /api/reports/.../summary | detail
-  if (path.endsWith("/summary") || path.endsWith("/detail")) {
-    const base = path.endsWith("/summary") ? MOCK_SUMMARY : MOCK_DETAIL;
-    let rows = base.slice();
-    // 筛选
+  if (path === "/api/reports/daily_sales/versions") {
+    return { items: MOCK_VERSIONS };
+  }
+  if (path === "/api/reports/daily_sales/summary") {
+    const v = params.version === "latest" || params.version == null ? 3 : +params.version;
+    let rows = (FACT_BY_VERSION[v] ?? FACT_BY_VERSION[3]).slice();
+    // filter by region (prefix support)
     if (params.region_code) {
       const r = String(params.region_code);
       rows = rows.filter(x => x.region_code === r || (r.length<6 && x.region_code.startsWith(r)));
     }
     if (params.product_code) rows = rows.filter(x => x.product_code === params.product_code);
-    // 排序
-    if (params.sort) {
-      const [f,d] = params.sort.split(":");
-      rows.sort((a,b) => (a[f] > b[f] ? 1 : a[f] < b[f] ? -1 : 0) * (d==="desc"?-1:1));
+    // row_filter JSON
+    if (params.row_filter) {
+      const filters = JSON.parse(params.row_filter);
+      for (const f of filters) {
+        rows = rows.filter(r => applyPredicate(r[f.column], f.op, f.value));
+      }
     }
-    const ps = +params.page_size || 50, pg = +params.page || 1;
-    const total = rows.length;
-    const page_rows = rows.slice((pg-1)*ps, pg*ps);
-    const totals = path.endsWith("/summary") ? {
-      gmv: rows.reduce((s,r) => s+r.gmv, 0),
-      orders: rows.reduce((s,r) => s+r.orders, 0)
-    } : null;
-    return { items: page_rows, page: pg, page_size: ps, total, has_more: pg*ps<total, extras: totals?{totals}:null };
+    // attach _row_favorite
+    rows = rows.map(r => ({ ...r, _row_favorite: ROW_FAV.has(`${r.region_code}|${r.product_code}`) }));
+    // sort
+    rows = sortRows(rows, params.sort);
+    const pg = paged(rows, params, 50);
+    // totals
+    pg.extras = { totals: rows.reduce((a,r) => {
+      a.gmv_app += r.gmv_app; a.gmv_web += r.gmv_web; a.gmv_store += r.gmv_store; a.orders += r.orders; return a;
+    }, {gmv_app:0,gmv_web:0,gmv_store:0,orders:0}) };
+    pg.version_used = { scope:"per_day", min:v, max:v };
+    return pg;
   }
-  // user prefs (in-memory)
-  if (path.startsWith("/api/users/me/columns/")) {
-    if (params.__method === "PUT") { USER_PREFS[params.view] = params.items; return { ok:true }; }
-    if (params.__method === "DELETE") { USER_PREFS[params.view] = []; return { ok:true }; }
-    return { view: params.view, is_personal_default: true, items: USER_PREFS[params.view] ?? [] };
+  if (path === "/api/reports/daily_sales/detail") {
+    const body = params.__body || {};
+    const rows = genOrders(body.row?.region_code, body.row?.product_code, 80 + Math.floor(Math.random()*40));
+    let r = sortRows(rows, body.sort);
+    return paged(r, body.paging ?? params, 30);
+  }
+  if (path === "/api/reports/daily_sales/stock_detail") {
+    const body = params.__body || {};
+    const rows = genStock(body.row?.region_code, 50);
+    let r = sortRows(rows, body.sort);
+    return paged(r, body.paging ?? params, 30);
   }
   if (path.startsWith("/api/users/me/favorites/")) {
     const key = path.split("/").pop();
@@ -495,84 +686,137 @@ async function api(path, params={}){
     else delete FAV[key][params.option_value];
     return { ok:true };
   }
+  if (path.startsWith("/api/users/me/row_favorites/")) {
+    const k = `${params.business_key.region_code}|${params.business_key.product_code}`;
+    if (params.favorited) ROW_FAV.add(k); else ROW_FAV.delete(k);
+    return { ok:true };
+  }
+  if (path.startsWith("/api/users/me/columns/")) {
+    if (params.__method === "PUT") { USER_PREFS[params.view] = params.items; return {ok:true}; }
+    if (params.__method === "DELETE") { USER_PREFS[params.view] = []; return {ok:true}; }
+    return { view: params.view, items: USER_PREFS[params.view] ?? [] };
+  }
   throw new Error("unknown api " + path);
 }
-const FAV = { region_tree: {"CN-31":true}, product_search: {"P001":true} };
-const USER_PREFS = { summary: [], detail: [] };
+function paged(items, p, defaultSize) {
+  const ps = +p.page_size || defaultSize, pg = +p.page || 1;
+  return { items: items.slice((pg-1)*ps, pg*ps), page:pg, page_size:ps, total:items.length, has_more: pg*ps<items.length };
+}
+function sortBy(items, sortStr, defaultFields) {
+  if (!sortStr && !defaultFields) return items;
+  const sorters = (sortStr ? sortStr.split(",") : defaultFields.map(f => f+":asc")).map(s => s.split(":"));
+  return items.sort((a,b) => {
+    for (const [f,d] of sorters) {
+      const av = f==="is_favorite" ? (a.is_favorite?1:0) : (a[f] ?? a.label ?? "");
+      const bv = f==="is_favorite" ? (b.is_favorite?1:0) : (b[f] ?? b.label ?? "");
+      if (av<bv) return d==="asc"?-1:1;
+      if (av>bv) return d==="asc"?1:-1;
+    } return 0;
+  });
+}
+function sortRows(rows, sortStr) {
+  if (!sortStr) return rows;
+  const sorters = sortStr.split(",").map(s => s.split(":"));
+  return rows.sort((a,b) => {
+    for (const [f,d] of sorters) {
+      const av = f === "_row_favorite" ? (a._row_favorite?1:0) : a[f];
+      const bv = f === "_row_favorite" ? (b._row_favorite?1:0) : b[f];
+      if (av<bv) return d==="asc"?-1:1;
+      if (av>bv) return d==="asc"?1:-1;
+    } return 0;
+  });
+}
+function applyPredicate(v, op, val) {
+  switch (op) {
+    case "eq":  return v == val;
+    case "ne":  return v != val;
+    case "gt":  return Number(v) >  Number(val);
+    case "gte": return Number(v) >= Number(val);
+    case "lt":  return Number(v) <  Number(val);
+    case "lte": return Number(v) <= Number(val);
+    case "in":  return Array.isArray(val) ? val.includes(v) : false;
+    case "ilike": return String(v ?? "").toLowerCase().includes(String(val ?? "").toLowerCase());
+    case "between": return Number(v) >= Number(val[0]) && Number(v) <= Number(val[1]);
+    default: return true;
+  }
+}
 
-/* =====================================================================
+/* ════════════════════════════════════════════════════════════════════
    State
-   ===================================================================== */
+   ════════════════════════════════════════════════════════════════════ */
 const state = {
   config: null,
-  view: "summary",
-  filterValues: {},  // {business_date:{from,to}, region:"CN-31", product:"P001"}
-  sort: null,        // {field,dir}
+  filterValues: {},
+  version: "latest",
+  versionList: [],
+  sort: null,
   page: 1, page_size: 50,
-  rows: [], total: 0, totals: null,
-  cols: [],          // 合并后的列
+  rows: [], total: 0, totals: null, version_used: null,
+  rowFilters: [],   // [{column, op, value}]
+  tree: null,       // merged column tree
+  leaves: [],       // visible leaf columns (in display order)
+  density: "normal"
 };
 
-/* =====================================================================
-   Pure functions
-   ===================================================================== */
-function mergeColumns(defaults, prefs) {
-  const p = new Map((prefs ?? []).map(x => [x.field_code, x]));
-  return defaults.map(c => {
-    const pr = p.get(c.code);
-    return {
-      ...c,
-      _visible: pr?.is_visible ?? c.is_default_visible,
-      _order:   pr?.order_idx  ?? c.default_order,
-      _width:   pr?.width      ?? c.default_width,
-      _pinned:  pr?.pinned     ?? c.default_pinned ?? "none",
-    };
-  }).sort((a,b) => a._order - b._order);
-}
-function buildParams(filters, values) {
-  const params = {};
-  for (const f of filters) {
-    const v = values[f.code];
-    if (v == null) continue;
-    if (f.kind === "date_range") {
-      if (v.from) params[f.param.from] = v.from;
-      if (v.to)   params[f.param.to]   = v.to;
-    } else {
-      params[f.param.value] = v;
+/* ════════════════════════════════════════════════════════════════════
+   Pure functions (header tree)
+   ════════════════════════════════════════════════════════════════════ */
+function isLeaf(n) { return !n.children; }
+function mergeColumns(tree, prefs) {
+  const pmap = new Map((prefs ?? []).map(p => [p.field_code, p]));
+  function walk(n) {
+    if (isLeaf(n)) {
+      const p = pmap.get(n.code);
+      return { ...n, kind:"leaf",
+        _visible: p?.is_visible ?? n.is_default_visible,
+        _order:   p?.order_idx  ?? n.default_order,
+        _width:   p?.width      ?? n.default_width,
+        _pinned:  p?.pinned     ?? n.default_pinned ?? "none" };
     }
+    const kids = n.children.map(walk);
+    // 排序：叶子按 _order，分组保持原顺序
+    kids.sort((a,b) => {
+      if (a.kind==="leaf" && b.kind==="leaf") return a._order - b._order;
+      return 0;
+    });
+    return { ...n, kind:"group", children: kids };
   }
-  return params;
+  return tree.map(walk);
 }
-function fmt(v, disp) {
-  if (v == null || v === "") return {text:"—", cls:"empty num"};
-  if (!disp || disp.kind === "text") return {text:String(v), cls:""};
-  if (disp.kind === "number") {
-    const n = Number(v); if (Number.isNaN(n)) return {text:String(v), cls:""};
-    const s = n.toLocaleString("zh-CN", {minimumFractionDigits: disp.precision ?? 0, maximumFractionDigits: disp.precision ?? 0});
-    return {text: (disp.unit ?? "") + s, cls:"num"};
+function treeMaxDepth(n) {
+  if (n.kind === "leaf") return 1;
+  return 1 + Math.max(...n.children.map(treeMaxDepth));
+}
+function visibleLeaves(n) {
+  if (n.kind === "leaf") return n._visible ? [n] : [];
+  return n.children.flatMap(visibleLeaves);
+}
+function buildHeaderMatrix(tree) {
+  const maxDepth = Math.max(...tree.map(treeMaxDepth));
+  const rows = Array.from({length: maxDepth}, () => []);
+  function walk(n, depth) {
+    if (n.kind === "leaf") {
+      if (!n._visible) return;
+      rows[depth].push({ kind:"leaf", node:n, rowSpan: maxDepth - depth });
+      return;
+    }
+    const span = n.children.flatMap(visibleLeaves).length;
+    if (span === 0) return;
+    rows[depth].push({ kind:"group", node:n, colSpan: span });
+    n.children.forEach(c => walk(c, depth+1));
   }
-  if (disp.kind === "percent") return {text: Number(v).toFixed(disp.precision ?? 1) + "%", cls:"num"};
-  return {text:String(v), cls:""};
+  tree.forEach(n => walk(n, 0));
+  return { rows, maxDepth };
 }
 
-/* =====================================================================
-   Renderers
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   Render
+   ════════════════════════════════════════════════════════════════════ */
 function renderTitle() {
   document.getElementById("reportTitle").textContent = state.config.meta.name;
-  document.getElementById("cfgVer").textContent = "v" + state.config.meta.version + " · " + state.config.meta.report_type;
+  document.getElementById("cfgVer").textContent = "config v" + state.config.meta.version + " · " + state.config.meta.report_type;
 }
-function renderTabs() {
-  const el = document.getElementById("tabs");
-  el.innerHTML = "";
-  for (const t of state.config.tabs) {
-    const a = document.createElement("div");
-    a.className = "tab" + (state.view === t.code ? " active" : "");
-    a.innerHTML = `${t.label}`;
-    a.onclick = () => { state.view = t.code; state.sort = null; state.page = 1; refresh(); };
-    el.appendChild(a);
-  }
-}
+
 function renderFilterBar() {
   const bar = document.getElementById("filterBar");
   bar.innerHTML = "";
@@ -583,13 +827,12 @@ function renderFilterBar() {
 
     if (f.kind === "date_range") {
       const inp = document.createElement("div"); inp.className = "field-input";
-      const fromI = document.createElement("input"); fromI.type = "date";
-      const toI   = document.createElement("input"); toI.type = "date";
       const v = state.filterValues[f.code] || f.default || {};
-      fromI.value = v.from || ""; toI.value = v.to || "";
-      fromI.onchange = () => { v.from = fromI.value; state.filterValues[f.code] = {...v}; };
-      toI.onchange   = () => { v.to   = toI.value;   state.filterValues[f.code] = {...v}; };
-      inp.append(fromI, document.createTextNode(" ~ "), toI);
+      const fromI = document.createElement("input"); fromI.type="date"; fromI.value = v.from || "";
+      const toI = document.createElement("input"); toI.type="date"; toI.value = v.to || "";
+      fromI.onchange = () => { v.from = fromI.value; state.filterValues[f.code]={...v}; };
+      toI.onchange   = () => { v.to   = toI.value;   state.filterValues[f.code]={...v}; };
+      inp.append(fromI, document.createTextNode("~"), toI);
       wrap.appendChild(inp);
     } else if (f.kind === "hierarchy_dropdown") {
       wrap.appendChild(buildDropdownInput(f, "hierarchy"));
@@ -599,86 +842,196 @@ function renderFilterBar() {
     bar.appendChild(wrap);
   }
   const acts = document.createElement("div"); acts.className = "actions";
-  const reset = document.createElement("button"); reset.className = "btn ghost"; reset.textContent = "重置";
-  reset.onclick = () => { state.filterValues = {}; renderFilterBar(); refresh(); };
-  const query = document.createElement("button"); query.className = "btn primary"; query.textContent = "查询";
+  const reset = document.createElement("button"); reset.className="btn ghost"; reset.textContent="重置";
+  reset.onclick = () => {
+    state.filterValues = {}; state.rowFilters = [];
+    for (const f of state.config.filters) if (f.default) state.filterValues[f.code] = {...f.default};
+    state.page = 1; renderFilterBar(); refresh();
+  };
+  const query = document.createElement("button"); query.className="btn primary"; query.textContent="查询";
   query.onclick = () => { state.page = 1; refresh(); };
-  acts.append(reset, query); bar.appendChild(acts);
+  acts.append(reset, query);
+  bar.appendChild(acts);
 }
 function buildDropdownInput(filter, kind) {
   const inp = document.createElement("div"); inp.className = "field-input";
   const val = state.filterValues[filter.code];
-  const renderChip = () => {
+  const render = () => {
     inp.innerHTML = "";
     if (val) {
-      const label = val.label || val;
-      const chip = document.createElement("span"); chip.className = "chip";
-      chip.innerHTML = label + ` <span class="x" title="清除">×</span>`;
-      chip.querySelector(".x").onclick = e => { e.stopPropagation(); state.filterValues[filter.code] = null; renderFilterBar(); };
+      const chip = document.createElement("span"); chip.className="chip";
+      chip.innerHTML = `${val.label || val} <span class="x" title="清除">×</span>`;
+      chip.querySelector(".x").onclick = e => { e.stopPropagation(); state.filterValues[filter.code]=null; renderFilterBar(); };
       inp.appendChild(chip);
     } else {
-      const ph = document.createElement("span"); ph.style.color = "var(--muted)"; ph.textContent = "选择 " + filter.label + " …";
+      const ph = document.createElement("span"); ph.style.color = "var(--muted)"; ph.textContent = "选择 "+filter.label+" …";
       inp.appendChild(ph);
     }
-    const car = document.createElement("span"); car.textContent = " ▾"; car.style.color = "var(--muted)";
+    const car = document.createElement("span"); car.textContent=" ▾"; car.style.color="var(--muted)";
     inp.appendChild(car);
   };
-  renderChip();
+  render();
   inp.onclick = (e) => openDropdownPopup(filter, kind, e.currentTarget);
   return inp;
 }
-function renderTable() {
-  const cfgCols = state.config.columns[state.view];
-  state.cols = mergeColumns(cfgCols, USER_PREFS[state.view]);
-  const visible = state.cols.filter(c => c._visible);
-  const table = document.getElementById("table");
-  table.innerHTML = "";
-  // thead
-  const thead = document.createElement("thead"); const tr = document.createElement("tr");
-  for (const c of visible) {
-    const th = document.createElement("th");
-    th.textContent = c.label;
-    if (c._pinned === "left") th.classList.add("pin-left");
-    if (c._pinned === "right") th.classList.add("pin-right");
-    if (c.sortable) {
-      th.classList.add("sortable");
-      const arr = document.createElement("span"); arr.className = "sort";
-      if (state.sort?.field === c.code) {
-        th.classList.add("sorted");
-        arr.textContent = state.sort.dir === "asc" ? "▲" : "▼";
-      } else { arr.textContent = "↕"; }
-      th.appendChild(arr);
-      th.onclick = () => {
-        if (state.sort?.field === c.code) {
-          if (state.sort.dir === "asc") state.sort.dir = "desc";
-          else state.sort = null;
-        } else state.sort = { field: c.code, dir: "asc" };
-        refresh();
-      };
-    }
-    tr.appendChild(th);
+
+/* ───── Version pill ───── */
+async function loadVersionList() {
+  const r = await api("/api/reports/daily_sales/versions", {});
+  state.versionList = r.items;
+}
+function renderVersionPill() {
+  const pill = document.getElementById("verPill");
+  const lbl  = document.getElementById("verLabel");
+  const cur = state.version === "latest"
+    ? state.versionList.find(v => v.is_latest)
+    : state.versionList.find(v => v.version_no === +state.version);
+  if (!cur) return;
+  lbl.textContent = `v${cur.version_no} ${cur.is_latest ? "· 最新" : "· 历史"}`;
+  pill.classList.toggle("warn", !cur.is_latest);
+  // Banner
+  const ban = document.getElementById("warningBanner");
+  if (!cur.is_latest) {
+    ban.style.display = "block";
+    ban.innerHTML = `<div class="v-banner"><b>⚠ 正在查看历史版本</b> · v${cur.version_no} · ${cur.generated_at} · 由 ${cur.generated_by} 生成${cur.note?` · ${cur.note}`:""} · <a href="javascript:void(0)" id="banBackLatest" style="color:inherit;text-decoration:underline;">恢复最新版</a></div>`;
+    document.getElementById("banBackLatest").onclick = () => { state.version="latest"; renderVersionPill(); refresh(); };
+  } else {
+    ban.style.display = "none"; ban.innerHTML = "";
   }
-  thead.appendChild(tr); table.appendChild(thead);
-  // tbody
+}
+function openVersionPopup() {
+  closePopup();
+  const rect = document.getElementById("verPill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className="popup";
+  popupEl.style.left = (rect.right - 280) + "px";
+  popupEl.style.top  = (rect.bottom + 6) + "px";
+  popupEl.style.minWidth = "280px";
+  popupEl.innerHTML = `<div class="popup-head"><div class="row"><b style="color:var(--text);">选择版本</b><span class="audit-mini-help">同日有多版时只看最新</span></div></div><div class="popup-body" id="versionList"></div>`;
+  document.body.appendChild(popupEl);
+  const lst = popupEl.querySelector("#versionList");
+  for (const v of state.versionList) {
+    const o = document.createElement("div"); o.className = "opt";
+    if ((state.version === "latest" && v.is_latest) || +state.version === v.version_no) o.classList.add("sel");
+    o.innerHTML = `<span style="display:inline-block;width:14px;text-align:center;">${v.is_latest?"●":"○"}</span>
+      <span class="lbl"><b>v${v.version_no}</b> ${v.is_latest?"· 最新":""}<div class="meta">${v.generated_at} · ${v.generated_by}${v.note?` · ${v.note}`:""}</div></span>
+      <span class="meta">${v.status}</span>`;
+    o.onclick = () => { state.version = v.is_latest ? "latest" : v.version_no; closePopup(); renderVersionPill(); refresh(); };
+    lst.appendChild(o);
+  }
+}
+
+/* ───── Table ───── */
+function renderTable() {
+  const tree0 = state.config.columns.summary.header_tree;
+  state.tree = mergeColumns(tree0, USER_PREFS.summary);
+  state.leaves = state.tree.flatMap(visibleLeaves);
+  const { rows, maxDepth } = buildHeaderMatrix(state.tree);
+
+  // 设置 CSS variable for sticky tops
+  document.documentElement.style.setProperty("--th-h-1", "32px");
+  document.documentElement.style.setProperty("--th-h-2", "30px");
+  document.documentElement.style.setProperty("--th-h-3", "30px");
+  document.documentElement.style.setProperty("--th-h-4", "30px");
+
+  const table = document.getElementById("table");
+  table.className = "grid density-" + state.density;
+  table.innerHTML = "";
+
+  // <thead>
+  const thead = document.createElement("thead");
+  // Each header row
+  for (let i=0; i<maxDepth; i++) {
+    const tr = document.createElement("tr");
+    // row-favorite cell: only on the bottom row (leaf row)
+    if (i === 0 && state.config.primary_view.row_favorite?.enabled) {
+      const th = document.createElement("th");
+      th.className = "fav-th"; th.rowSpan = maxDepth;
+      th.style.position = "sticky"; th.style.left = "0"; th.style.zIndex = "5";
+      th.innerHTML = "★";
+      tr.appendChild(th);
+    }
+    for (const cell of rows[i]) {
+      const th = document.createElement("th");
+      if (cell.kind === "leaf") {
+        th.classList.add("leaf");
+        if (cell.rowSpan > 1) th.rowSpan = cell.rowSpan;
+        if (cell.node._pinned === "left") th.classList.add("pin-left");
+        if (cell.node._pinned === "right") th.classList.add("pin-right");
+        if (cell.node.sortable) th.classList.add("sortable");
+        if (cell.node.code && state.sort?.field === cell.node.code) th.classList.add("sorted");
+        if (state.rowFilters.some(f => f.column === cell.node.code)) th.classList.add("filtered");
+        const lbl = document.createElement("span"); lbl.className="label-row";
+        lbl.appendChild(document.createTextNode(cell.node.label));
+        if (cell.node.sortable) {
+          const arr = document.createElement("span"); arr.className="arr";
+          arr.textContent = state.sort?.field === cell.node.code ? (state.sort.dir==="asc"?"▲":"▼") : "↕";
+          lbl.appendChild(arr);
+        }
+        if (cell.node.row_filterable) {
+          const f = document.createElement("span"); f.className="funnel"; f.textContent="▽"; f.title="按列筛选";
+          f.onclick = (e) => { e.stopPropagation(); openColumnFilter(cell.node, e.currentTarget); };
+          lbl.appendChild(f);
+        }
+        th.appendChild(lbl);
+        if (cell.node.sortable) th.onclick = () => toggleSort(cell.node.code);
+      } else {
+        th.colSpan = cell.colSpan;
+        th.textContent = cell.node.label;
+        th.style.background = "#e9eef7";
+      }
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+  }
+  table.appendChild(thead);
+
+  // <tbody>
   const tbody = document.createElement("tbody");
   for (const r of state.rows) {
     const trr = document.createElement("tr");
-    for (const c of visible) {
+    if (r._row_favorite) trr.classList.add("fav");
+    // star cell
+    if (state.config.primary_view.row_favorite?.enabled) {
+      const td = document.createElement("td"); td.className = "fav-td";
+      const btn = document.createElement("button"); btn.className = "star" + (r._row_favorite ? " on" : "");
+      btn.textContent = r._row_favorite ? "★" : "☆";
+      btn.title = r._row_favorite ? "取消收藏" : "收藏此行（置顶）";
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const next = !r._row_favorite;
+        await api(`/api/users/me/row_favorites/daily_sales`, {
+          business_date: state.filterValues.business_date?.from,
+          business_key: { region_code: r.region_code, product_code: r.product_code },
+          favorited: next
+        });
+        r._row_favorite = next;
+        toast(next ? "已收藏 " + r.region_label + "/" + r.product_code : "取消收藏");
+        refresh();
+      };
+      td.appendChild(btn);
+      trr.appendChild(td);
+    }
+    for (const c of state.leaves) {
       const td = document.createElement("td");
       let val = r[c.code];
       if (c.code === "region_code" && r.region_label) val = `${r.region_label} (${val})`;
-      const o = fmt(val, c.display);
-      td.className = o.cls + (c._pinned==="left"?" pin-left":"") + (c._pinned==="right"?" pin-right":"");
-      td.textContent = o.text;
-      // 审计徽章
+      const fm = formatCell(val, c.display);
+      td.className = fm.cls + (c._pinned==="left"?" pin-left":"") + (c._pinned==="right"?" pin-right":"");
+      if (c.code === "region_code" || c.code === "product_code") td.classList.add("dim");
+      td.textContent = fm.text;
+      // drilldown
+      if (c.drilldown && val != null && val !== "") {
+        td.classList.add("click");
+        td.onclick = () => openDrilldown(c, r);
+      }
+      // audit badge
       if (r._audit && r._audit[c.code]) {
-        const a = r._audit[c.code].find(x => x.valid);
-        if (a) {
+        const v = r._audit[c.code].find(x => x.valid);
+        if (v) {
           const b = document.createElement("span");
-          b.className = "src-badge src-" + a.source;
-          b.textContent = a.source + " v" + a.vno;
-          b.style.cursor = "pointer";
-          b.title = "点击查看溯源 / 版本";
+          b.className = "src-badge src-" + v.source;
+          b.textContent = v.source + " v" + v.vno;
+          b.title = "点击查看溯源";
           b.onclick = (e) => { e.stopPropagation(); showAudit(r, c, e); };
           td.appendChild(document.createTextNode(" "));
           td.appendChild(b);
@@ -689,11 +1042,41 @@ function renderTable() {
     tbody.appendChild(trr);
   }
   table.appendChild(tbody);
-  // 合计 / 分页 / row meta
-  document.getElementById("rowMeta").textContent =
-    `共 ${state.total} 行 · 当前页 ${state.rows.length} 行` +
-    (state.totals ? ` · GMV合计 ¥${state.totals.gmv.toLocaleString("zh-CN",{maximumFractionDigits:0})}` : "");
+
+  // toolbar / pagination
+  let metaText = `${state.total} 行 · 当前 ${state.rows.length} 行`;
+  if (state.totals) metaText += ` · <b>APP GMV合计</b> ¥${state.totals.gmv_app.toLocaleString("zh-CN",{maximumFractionDigits:0})}`;
+  if (state.rowFilters.length) metaText += ` · <span style="color:var(--primary);">${state.rowFilters.length} 个列筛选</span>`;
+  document.getElementById("rowMeta").innerHTML = metaText;
   renderPagination();
+
+  // Now measure actual th heights and set CSS variables (for sticky to be exact)
+  measureHeaderHeights();
+}
+function measureHeaderHeights() {
+  const trs = document.querySelectorAll("#table thead tr");
+  trs.forEach((tr, i) => {
+    document.documentElement.style.setProperty(`--th-h-${i+1}`, tr.offsetHeight + "px");
+  });
+}
+function formatCell(v, disp) {
+  if (v == null || v === "") return {text:"—", cls:"empty"};
+  if (!disp || disp.kind === "text") return {text: String(v), cls:""};
+  if (disp.kind === "number") {
+    const n = Number(v);
+    if (Number.isNaN(n)) return {text:String(v), cls:""};
+    const s = n.toLocaleString("zh-CN", {minimumFractionDigits: disp.precision ?? 0, maximumFractionDigits: disp.precision ?? 0});
+    return {text: (disp.unit ?? "") + s, cls:"num"};
+  }
+  if (disp.kind === "percent") return {text: Number(v).toFixed(disp.precision ?? 1) + "%", cls:"num"};
+  return {text:String(v), cls:""};
+}
+function toggleSort(field) {
+  if (state.sort?.field === field) {
+    if (state.sort.dir === "asc") state.sort.dir = "desc";
+    else state.sort = null;
+  } else state.sort = { field, dir: "asc" };
+  refresh();
 }
 function renderPagination() {
   const el = document.getElementById("pagination");
@@ -701,8 +1084,8 @@ function renderPagination() {
   el.innerHTML = "";
   const psSel = document.createElement("select");
   for (const s of [20,50,100,200]) {
-    const o = document.createElement("option"); o.value=s; o.textContent=s+" 行/页"; if (s===state.page_size) o.selected = true;
-    psSel.appendChild(o);
+    const o = document.createElement("option"); o.value=s; o.textContent=s+" 行/页";
+    if (s===state.page_size) o.selected = true; psSel.appendChild(o);
   }
   psSel.onchange = () => { state.page_size = +psSel.value; state.page = 1; refresh(); };
   const prev = document.createElement("button"); prev.className="btn sm"; prev.textContent="‹ 上一页"; prev.disabled = state.page<=1;
@@ -710,50 +1093,87 @@ function renderPagination() {
   const next = document.createElement("button"); next.className="btn sm"; next.textContent="下一页 ›"; next.disabled = state.page>=totalPages;
   next.onclick = () => { state.page++; refresh(); };
   const info = document.createElement("span"); info.textContent = `第 ${state.page} / ${totalPages} 页`;
-  el.append(psSel, document.createElement("span"), prev, info, next);
-  el.querySelectorAll("span")[0].className = "spacer";
+  const spacer = document.createElement("span"); spacer.className = "spacer";
+  el.append(psSel, spacer, prev, info, next);
 }
 
-/* =====================================================================
-   Dropdown popup (covers hierarchy + search; same widget, different mode)
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   Column filter (per-column predicates)
+   ════════════════════════════════════════════════════════════════════ */
 let popupEl = null;
-function closePopup(){ if (popupEl) { popupEl.remove(); popupEl = null; } }
+function closePopup(){ if (popupEl){popupEl.remove(); popupEl=null;} }
 document.addEventListener("click", (e) => {
-  if (popupEl && !popupEl.contains(e.target) && !e.target.closest(".field-input")) closePopup();
+  if (popupEl && !popupEl.contains(e.target)
+      && !e.target.closest(".field-input")
+      && !e.target.closest(".ver-pill")
+      && !e.target.closest(".funnel")) closePopup();
 });
+
+function openColumnFilter(col, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup colfilter";
+  popupEl.style.left = (rect.left - 8) + "px"; popupEl.style.top = (rect.bottom + 6) + "px";
+  const existing = state.rowFilters.find(f => f.column === col.code);
+  const numericOps = [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["ne","≠"],["between","区间"]];
+  const stringOps  = [["ilike","包含"],["eq","等于"],["ne","不等"],["in","多选"]];
+  const ops = (col.data_type === "string") ? stringOps : numericOps;
+  popupEl.innerHTML = `
+    <h4>${col.label} · 列筛选</h4>
+    <div class="ctl">
+      <select id="cfOp">${ops.map(([v,l]) => `<option value="${v}"${existing?.op===v?" selected":""}>${l}</option>`).join("")}</select>
+      <input id="cfVal" placeholder="${col.data_type==="string"?'例：拿铁':'例：5000'}" value="${existing?.value ?? ""}" />
+    </div>
+    <div class="btns">
+      <button class="btn sm ghost" id="cfClear">清除</button>
+      <button class="btn sm primary" id="cfApply">应用</button>
+    </div>`;
+  document.body.appendChild(popupEl);
+  popupEl.querySelector("#cfVal").focus();
+  popupEl.querySelector("#cfApply").onclick = () => {
+    const op = popupEl.querySelector("#cfOp").value;
+    let val = popupEl.querySelector("#cfVal").value;
+    state.rowFilters = state.rowFilters.filter(f => f.column !== col.code);
+    if (val) {
+      if (op === "in")   val = val.split(",").map(s=>s.trim());
+      if (op === "between") val = val.split("~").map(s=>+s.trim());
+      else if (col.data_type !== "string") val = +val;
+      state.rowFilters.push({column: col.code, op, value: val});
+    }
+    closePopup(); state.page = 1; refresh();
+  };
+  popupEl.querySelector("#cfClear").onclick = () => {
+    state.rowFilters = state.rowFilters.filter(f => f.column !== col.code);
+    closePopup(); state.page = 1; refresh();
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Dropdown popup (hierarchy + search)
+   ════════════════════════════════════════════════════════════════════ */
 function openDropdownPopup(filter, kind, anchor) {
   closePopup();
   const rect = anchor.getBoundingClientRect();
-  popupEl = document.createElement("div");
-  popupEl.className = "popup";
-  popupEl.style.left = rect.left + "px";
-  popupEl.style.top  = (rect.bottom + 4) + "px";
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = rect.left + "px"; popupEl.style.top = (rect.bottom + 4) + "px";
   popupEl.style.minWidth = Math.max(280, rect.width) + "px";
-
   const src = filter.source;
   const stateP = {
-    q: "",
-    sort: (src.default_sort ?? []).map(s => `${s.field}:${s.dir}`).join(","),
-    only_favorites: false,
-    expanded: {},        // for hierarchy
-    page: 1,
-    items: [],
-    has_more: false,
-    parent_chain: kind === "hierarchy" ? [null] : ["any"]
+    q:"", sort:(src.default_sort ?? []).map(s=>`${s.field}:${s.dir}`).join(","),
+    only_favorites:false, expanded:{}, page:1
   };
-
-  const head = document.createElement("div"); head.className = "popup-head";
-  const qIn = document.createElement("input"); qIn.className="q"; qIn.placeholder = (kind==="search"?"搜索产品（名称/编码）…":"搜索区域 / 输入关键字…");
+  const head = document.createElement("div"); head.className="popup-head";
+  const qIn = document.createElement("input"); qIn.className="q";
+  qIn.placeholder = kind==="search" ? "搜索产品（名称/编码）…" : "搜索区域 / 输入关键字…";
   head.appendChild(qIn);
   if (src.supports_favorite || src.sortable_by?.length) {
-    const row = document.createElement("div"); row.className = "row";
+    const row = document.createElement("div"); row.className="row";
     if (src.supports_favorite) {
       const lab = document.createElement("label");
-      lab.style.display="inline-flex"; lab.style.alignItems="center"; lab.style.gap="3px";
+      lab.style.display="inline-flex"; lab.style.alignItems="center"; lab.style.gap="4px"; lab.style.cursor="pointer";
       const cb = document.createElement("input"); cb.type="checkbox";
       cb.onchange = () => { stateP.only_favorites = cb.checked; load(); };
-      lab.append(cb, document.createTextNode("只看收藏 ⭐"));
+      lab.append(cb, document.createTextNode("只看 ★"));
       row.appendChild(lab);
     }
     if (src.sortable_by?.length) {
@@ -768,8 +1188,7 @@ function openDropdownPopup(filter, kind, anchor) {
       }
       for (const [v,t] of opts) {
         const o = document.createElement("option"); o.value=v; o.textContent=t;
-        if (v === stateP.sort) o.selected = true;
-        sel.appendChild(o);
+        if (v === stateP.sort) o.selected = true; sel.appendChild(o);
       }
       sel.onchange = () => { stateP.sort = sel.value; load(); };
       row.append(lab, sel);
@@ -777,48 +1196,30 @@ function openDropdownPopup(filter, kind, anchor) {
     head.appendChild(row);
   }
   popupEl.appendChild(head);
-
-  const body = document.createElement("div"); body.className = "popup-body";
-  popupEl.appendChild(body);
-
-  const foot = document.createElement("div"); foot.className = "popup-foot";
-  popupEl.appendChild(foot);
-
-  document.body.appendChild(popupEl);
-  qIn.focus();
-
-  let qTimer = 0;
-  qIn.oninput = () => {
-    clearTimeout(qTimer);
-    qTimer = setTimeout(() => { stateP.q = qIn.value; stateP.page = 1; stateP.expanded = {}; load(); }, 200);
-  };
+  const body = document.createElement("div"); body.className="popup-body"; popupEl.appendChild(body);
+  document.body.appendChild(popupEl); qIn.focus();
+  let timer;
+  qIn.oninput = () => { clearTimeout(timer); timer = setTimeout(() => { stateP.q = qIn.value; stateP.page=1; stateP.expanded={}; load(); }, 200); };
 
   async function load() {
-    body.innerHTML = "<div style='padding:14px;color:var(--muted);'>加载中…</div>";
-    foot.innerHTML = "";
-
+    body.innerHTML = `<div style="padding:16px;color:var(--muted);">加载中…</div>`;
     if (kind === "hierarchy") {
-      // 渲染整棵被展开的树
       const tree = await loadTree(filter, stateP);
       body.innerHTML = "";
-      for (const n of tree) body.appendChild(renderHierarchyNode(filter, n, stateP));
+      for (const n of tree) body.appendChild(renderHierarchyOpt(filter, n, stateP, load));
     } else {
-      // 平铺分页
-      const params = baseParams(filter, stateP); params.page = stateP.page;
-      const r = await api(src.endpoint, params);
-      stateP.items = r.items; stateP.has_more = r.has_more;
+      const params = baseDropdownParams(filter, stateP); params.page = stateP.page;
+      const r = await api(filter.source.endpoint, params);
       body.innerHTML = "";
-      for (const it of r.items) body.appendChild(renderFlatOption(filter, it, stateP));
+      for (const it of r.items) body.appendChild(renderFlatOpt(filter, it, stateP));
       if (r.has_more) {
         const m = document.createElement("div"); m.className = "popup-foot";
-        m.innerHTML = `<span>第 ${r.page} 页 · 共 ${r.total}</span> <span class="spacer" style="flex:1;"></span> <span class="more">加载更多 ↓</span>`;
+        m.innerHTML = `<span>第 ${r.page} 页 · 共 ${r.total}</span><span style="flex:1;"></span><span class="more">加载更多 ↓</span>`;
         m.querySelector(".more").onclick = async () => {
           stateP.page++;
-          const more = await api(src.endpoint, {...params, page: stateP.page});
-          stateP.has_more = more.has_more;
-          for (const it of more.items) body.insertBefore(renderFlatOption(filter, it, stateP), m);
-          if (!more.has_more) m.remove();
-          else m.querySelector("span").textContent = `第 ${more.page} 页 · 共 ${more.total}`;
+          const mr = await api(filter.source.endpoint, {...params, page: stateP.page});
+          for (const it of mr.items) body.insertBefore(renderFlatOpt(filter, it, stateP), m);
+          if (!mr.has_more) m.remove(); else m.querySelector("span").textContent = `第 ${mr.page} 页 · 共 ${mr.total}`;
         };
         body.appendChild(m);
       }
@@ -826,10 +1227,9 @@ function openDropdownPopup(filter, kind, anchor) {
   }
   load();
 }
-function baseParams(filter, stateP) {
+function baseDropdownParams(filter, stateP) {
   const p = { sort: stateP.sort, only_favorites: stateP.only_favorites?1:0, page_size: filter.source.paging.page_size };
   if (stateP.q) p.q = stateP.q;
-  // 依赖字段注入
   filter.depends_on?.forEach(dep => {
     const v = state.filterValues[dep];
     if (v) p[dep === "region" ? "region_code" : dep] = (v.value || v);
@@ -837,95 +1237,57 @@ function baseParams(filter, stateP) {
   return p;
 }
 async function loadTree(filter, stateP) {
-  // 顶层一次拉，被展开的节点拉子级
-  const top = await api(filter.source.endpoint, {...baseParams(filter, stateP), parent: null});
-  const nodes = top.items.map(it => ({...it, depth:0}));
-  async function expand(parent, depth) {
-    const r = await api(filter.source.endpoint, {...baseParams(filter, stateP), parent: parent.value});
-    return r.items.map(it => ({...it, depth}));
-  }
-  // 递归处理 stateP.expanded
+  const top = await api(filter.source.endpoint, {...baseDropdownParams(filter, stateP), parent: null});
   const out = [];
-  async function walk(items) {
+  async function walk(items, depth) {
     for (const it of items) {
-      out.push(it);
+      out.push({...it, depth});
       if (stateP.expanded[it.value]) {
-        const kids = await expand(it, it.depth+1);
-        await walk(kids);
+        const kids = await api(filter.source.endpoint, {...baseDropdownParams(filter, stateP), parent: it.value});
+        await walk(kids.items, depth+1);
       }
     }
   }
-  await walk(nodes);
+  await walk(top.items, 0);
   return out;
 }
-function renderHierarchyNode(filter, node, stateP) {
+function renderHierarchyOpt(filter, node, stateP, reload) {
   const row = document.createElement("div"); row.className = "opt";
   if (state.filterValues[filter.code]?.value === node.value) row.classList.add("sel");
-  const indent = document.createElement("span"); indent.className="indent"; indent.style.width = (node.depth*14) + "px";
+  const indent = document.createElement("span"); indent.className="indent"; indent.style.width=(node.depth*14)+"px";
   row.appendChild(indent);
-  const caret = document.createElement("span"); caret.className="caret"; caret.style.width="14px"; caret.style.display="inline-block";
+  const caret = document.createElement("span"); caret.className="caret";
   caret.textContent = node.has_children ? (stateP.expanded[node.value] ? "▾" : "▸") : " ";
-  caret.onclick = (e) => {
-    if (!node.has_children) return;
-    e.stopPropagation();
-    stateP.expanded[node.value] = !stateP.expanded[node.value];
-    // 重新加载视图
-    const wrap = row.parentElement;
-    wrap.innerHTML = "<div style='padding:8px;color:var(--muted);'>加载中…</div>";
-    loadTree(filter, stateP).then(tree => {
-      wrap.innerHTML = "";
-      for (const n of tree) wrap.appendChild(renderHierarchyNode(filter, n, stateP));
-    });
-  };
+  if (node.has_children) {
+    caret.style.cursor = "pointer";
+    caret.onclick = (e) => { e.stopPropagation(); stateP.expanded[node.value] = !stateP.expanded[node.value]; reload(); };
+  }
   row.appendChild(caret);
-  const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = node.label;
+  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent = node.label;
   row.appendChild(lbl);
   if (node.usage_count != null) {
-    const m = document.createElement("span"); m.className="meta"; m.textContent = "用量 " + node.usage_count;
+    const m = document.createElement("span"); m.className="meta"; m.textContent = "用量 "+node.usage_count;
     row.appendChild(m);
   }
-  if (filter.source.supports_favorite) {
-    const s = document.createElement("span"); s.className = "star" + (node.is_favorite?" on":"");
-    s.textContent = "⭐";
-    s.onclick = async (e) => {
-      e.stopPropagation();
-      await api(`/api/users/me/favorites/${filter.source.endpoint.split("/").pop()}`,
-                {option_value: node.value, favorited: !node.is_favorite});
-      node.is_favorite = !node.is_favorite; s.classList.toggle("on", node.is_favorite);
-      toast(node.is_favorite ? "已收藏 " + node.label : "取消收藏 " + node.label);
-    };
-    row.appendChild(s);
-  }
+  if (filter.source.supports_favorite) row.appendChild(starBtn(node, "region_tree"));
   row.onclick = (e) => {
     if (e.target.closest(".caret") || e.target.closest(".star")) return;
     state.filterValues[filter.code] = { value: node.value, label: node.label };
-    // 清依赖
     for (const f of state.config.filters) if (f.depends_on?.includes(filter.code)) state.filterValues[f.code] = null;
     closePopup(); renderFilterBar();
   };
   return row;
 }
-function renderFlatOption(filter, item, stateP) {
-  const row = document.createElement("div"); row.className = "opt";
+function renderFlatOpt(filter, item, stateP) {
+  const row = document.createElement("div"); row.className="opt";
   if (state.filterValues[filter.code]?.value === item.value) row.classList.add("sel");
-  const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = item.label;
+  const lbl = document.createElement("span"); lbl.className="lbl"; lbl.textContent = item.label;
   row.appendChild(lbl);
   if (item.sales_rank != null) {
-    const m = document.createElement("span"); m.className="meta"; m.textContent = "热销 #" + item.sales_rank;
+    const m = document.createElement("span"); m.className="meta"; m.textContent = "热销 #"+item.sales_rank;
     row.appendChild(m);
   }
-  if (filter.source.supports_favorite) {
-    const s = document.createElement("span"); s.className = "star" + (item.is_favorite?" on":"");
-    s.textContent = "⭐";
-    s.onclick = async (e) => {
-      e.stopPropagation();
-      await api(`/api/users/me/favorites/${filter.source.endpoint.split("/").pop()}`,
-                {option_value: item.value, favorited: !item.is_favorite});
-      item.is_favorite = !item.is_favorite; s.classList.toggle("on", item.is_favorite);
-      toast(item.is_favorite ? "已收藏 " + item.label : "取消收藏 " + item.label);
-    };
-    row.appendChild(s);
-  }
+  if (filter.source.supports_favorite) row.appendChild(starBtn(item, "product_search"));
   row.onclick = (e) => {
     if (e.target.closest(".star")) return;
     state.filterValues[filter.code] = { value: item.value, label: item.label };
@@ -933,155 +1295,317 @@ function renderFlatOption(filter, item, stateP) {
   };
   return row;
 }
-
-/* =====================================================================
-   Audit popup (来源 / 版本 / valid)
-   ===================================================================== */
-let auditEl = null;
-function showAudit(row, col, ev) {
-  if (auditEl) auditEl.remove();
-  auditEl = document.createElement("div"); auditEl.className = "audit-pop";
-  const rect = ev.target.getBoundingClientRect();
-  auditEl.style.left = (rect.left - 100) + "px";
-  auditEl.style.top  = (rect.bottom + 6)  + "px";
-  const audit = row._audit?.[col.code] ?? [];
-  auditEl.innerHTML = `<h4>${col.label} · 来源版本</h4><ul></ul>
-    <div style="margin-top:8px;color:var(--muted);">
-      <strong>合并规则</strong>: latest_valid · 来源优先级 [crm > erp > wms]<br/>
-      <em>点击右上角设置可改 source_mark。</em>
-    </div>`;
-  const ul = auditEl.querySelector("ul");
-  for (const a of audit) {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="src-badge src-${a.source}">${a.source}</span>
-                    <span class="ver">v${a.vno}</span>
-                    <span class="spacer" style="flex:1;"></span>
-                    <span class="${a.valid?'ok':'bad'}">${a.valid?'valid':'invalid'}</span>`;
-    ul.appendChild(li);
-  }
-  document.body.appendChild(auditEl);
-  setTimeout(() => document.addEventListener("click", _hide), 0);
-  function _hide(e) {
-    if (auditEl && !auditEl.contains(e.target)) { auditEl.remove(); auditEl = null; document.removeEventListener("click", _hide); }
-  }
+function starBtn(item, key) {
+  const btn = document.createElement("button");
+  btn.className = "star" + (item.is_favorite?" on":"");
+  btn.textContent = item.is_favorite ? "★" : "☆";
+  btn.title = item.is_favorite ? "取消收藏" : "收藏";
+  btn.onclick = async (e) => {
+    e.stopPropagation();
+    await api(`/api/users/me/favorites/${key}`, {option_value: item.value, favorited: !item.is_favorite});
+    item.is_favorite = !item.is_favorite;
+    btn.classList.toggle("on", item.is_favorite);
+    btn.textContent = item.is_favorite ? "★" : "☆";
+    toast(item.is_favorite ? "已收藏 " + item.label : "取消收藏");
+  };
+  return btn;
 }
 
-/* =====================================================================
-   Column drawer
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   Drilldown modal
+   ════════════════════════════════════════════════════════════════════ */
+const dl = { spec:null, row:null, col:null, page:1, page_size:30, sort:null, rows:[], total:0 };
+function openDrilldown(col, row) {
+  const ref = col.drilldown?.ref; if (!ref) return;
+  dl.spec = state.config.drilldowns[ref]; dl.row = row; dl.col = col;
+  dl.page = 1; dl.page_size = dl.spec.paging?.default_page_size ?? 30; dl.sort = null;
+  document.getElementById("modalMask").classList.add("show");
+  document.getElementById("modalTitle").textContent = interpolate(dl.spec.title, {
+    row, filter: state.filterValues, cell: {column: col.code, value: row[col.code]}
+  });
+  document.getElementById("modalSub").textContent = "数据接口: " + dl.spec.endpoint;
+  refreshDrilldown();
+}
+function closeDrilldown() { document.getElementById("modalMask").classList.remove("show"); }
+function interpolate(tpl, ctx) {
+  return tpl.replace(/\{([^}]+)\}/g, (_, path) => {
+    const parts = path.split(".");
+    let v = ctx; for (const p of parts) { v = v?.[p]; if (v == null) return ""; }
+    return v ?? "";
+  });
+}
+async function refreshDrilldown() {
+  const body = {
+    row: dl.row, filter: state.filterValues,
+    cell: { column: dl.col.code, value: dl.row[dl.col.code] },
+    paging: { page: dl.page, page_size: dl.page_size },
+    sort: dl.sort ? `${dl.sort.field}:${dl.sort.dir}` : null
+  };
+  const r = await api(dl.spec.endpoint, { __body: body });
+  dl.rows = r.items; dl.total = r.total;
+  renderDrilldownTable();
+}
+function renderDrilldownTable() {
+  const tree = mergeColumns(dl.spec.header_tree, []);
+  const { rows, maxDepth } = buildHeaderMatrix(tree);
+  const leaves = tree.flatMap(visibleLeaves);
+  const t = document.getElementById("modalTable");
+  t.className = "grid density-normal"; t.innerHTML = "";
+  const thead = document.createElement("thead");
+  for (let i=0;i<maxDepth;i++) {
+    const tr = document.createElement("tr");
+    for (const cell of rows[i]) {
+      const th = document.createElement("th");
+      if (cell.kind === "leaf") {
+        th.classList.add("leaf");
+        if (cell.rowSpan > 1) th.rowSpan = cell.rowSpan;
+        if (cell.node._pinned === "left") th.classList.add("pin-left");
+        if (cell.node.sortable) {
+          th.classList.add("sortable");
+          if (dl.sort?.field === cell.node.code) th.classList.add("sorted");
+        }
+        const lbl = document.createElement("span"); lbl.className="label-row";
+        lbl.appendChild(document.createTextNode(cell.node.label));
+        if (cell.node.sortable) {
+          const arr = document.createElement("span"); arr.className="arr";
+          arr.textContent = dl.sort?.field === cell.node.code ? (dl.sort.dir==="asc"?"▲":"▼") : "↕";
+          lbl.appendChild(arr);
+        }
+        th.appendChild(lbl);
+        if (cell.node.sortable) th.onclick = () => {
+          if (dl.sort?.field === cell.node.code) {
+            if (dl.sort.dir === "asc") dl.sort.dir = "desc"; else dl.sort = null;
+          } else dl.sort = { field: cell.node.code, dir: "asc" };
+          refreshDrilldown();
+        };
+      } else {
+        th.colSpan = cell.colSpan;
+        th.textContent = cell.node.label;
+        th.style.background = "#e9eef7";
+      }
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+  }
+  t.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const r of dl.rows) {
+    const trr = document.createElement("tr");
+    for (const c of leaves) {
+      const td = document.createElement("td");
+      const fm = formatCell(r[c.code], c.display);
+      td.className = fm.cls + (c._pinned==="left"?" pin-left":"");
+      td.textContent = fm.text;
+      trr.appendChild(td);
+    }
+    tbody.appendChild(trr);
+  }
+  t.appendChild(tbody);
+  document.getElementById("modalRowMeta").textContent = `共 ${dl.total} 行 · 当前 ${dl.rows.length} 行`;
+  // pagination
+  const totalPages = Math.max(1, Math.ceil(dl.total / dl.page_size));
+  const pag = document.getElementById("modalPagination"); pag.innerHTML = "";
+  const psSel = document.createElement("select");
+  for (const s of [20,30,50,100]) {
+    const o = document.createElement("option"); o.value=s; o.textContent=s+"/页";
+    if (s === dl.page_size) o.selected = true; psSel.appendChild(o);
+  }
+  psSel.onchange = () => { dl.page_size = +psSel.value; dl.page = 1; refreshDrilldown(); };
+  const prev = document.createElement("button"); prev.className="btn sm"; prev.textContent="‹"; prev.disabled = dl.page<=1;
+  prev.onclick = () => { dl.page--; refreshDrilldown(); };
+  const next = document.createElement("button"); next.className="btn sm"; next.textContent="›"; next.disabled = dl.page>=totalPages;
+  next.onclick = () => { dl.page++; refreshDrilldown(); };
+  const info = document.createElement("span"); info.textContent = `${dl.page}/${totalPages}`; info.style.padding = "0 6px";
+  pag.append(psSel, prev, info, next);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Column drawer (multi-level)
+   ════════════════════════════════════════════════════════════════════ */
 function openDrawer() {
-  const cfgCols = state.config.columns[state.view];
-  const working = mergeColumns(cfgCols, USER_PREFS[state.view]).map(c => ({...c}));
-  const body = document.getElementById("drawerBody");
-  body.innerHTML = "";
-  // 按 group 分组
-  const groups = {};
-  for (const c of working) {
-    const g = c.group || "其它";
-    (groups[g] = groups[g] || []).push(c);
+  const tree = mergeColumns(state.config.columns.summary.header_tree, USER_PREFS.summary);
+  const body = document.getElementById("drawerBody"); body.innerHTML = "";
+  function walk(node, lvl) {
+    if (node.kind === "leaf") {
+      body.appendChild(renderColRow(node, lvl, tree));
+      return;
+    }
+    const head = document.createElement("div");
+    head.className = "col-group-head" + (lvl>0?` lvl-${Math.min(lvl,3)}`:"");
+    head.innerHTML = `<span>▾</span><span>${node.label}</span><span class="ct">${countVisLeaves(node)} / ${countLeaves(node)}</span>`;
+    body.appendChild(head);
+    node.children.forEach(c => walk(c, lvl+1));
   }
-  for (const g of Object.keys(groups)) {
-    const grp = document.createElement("div"); grp.className = "group";
-    const head = document.createElement("div"); head.className = "group-head";
-    head.innerHTML = `<span class="ic">▾</span><span>${g}</span><span class="ct">${groups[g].filter(c=>c._visible).length} / ${groups[g].length}</span>`;
-    grp.appendChild(head);
-    for (const c of groups[g]) grp.appendChild(renderColRow(c, working));
-    body.appendChild(grp);
-  }
+  tree.forEach(n => walk(n, 0));
   document.getElementById("chkSaveDefault").checked = false;
   document.getElementById("drawerMask").classList.add("show");
   document.getElementById("drawer").classList.add("show");
-  document.getElementById("drawer").setAttribute("aria-hidden","false");
   document.getElementById("btnDrawerApply").onclick = async () => {
-    const items = working.map(c => ({
+    const flat = []; collectLeaves(tree, flat);
+    const items = flat.map(c => ({
       field_code: c.code, is_visible: c._visible, order_idx: c._order, width: c._width, pinned: c._pinned
     }));
     if (document.getElementById("chkSaveDefault").checked) {
-      await api(`/api/users/me/columns/daily_sales`, {__method:"PUT", view: state.view, items});
+      await api(`/api/users/me/columns/daily_sales`, {__method:"PUT", view: "summary", items});
       toast("已保存为我的默认");
     } else {
-      USER_PREFS[state.view] = items;  // 本次会话生效
-      toast("已应用本次会话");
+      USER_PREFS.summary = items; toast("已应用本次会话");
     }
     closeDrawer(); renderTable();
   };
   document.getElementById("btnRestoreDefault").onclick = async () => {
-    await api(`/api/users/me/columns/daily_sales`, {__method:"DELETE", view: state.view});
+    await api(`/api/users/me/columns/daily_sales`, {__method:"DELETE", view:"summary"});
     toast("已恢复后端默认");
     closeDrawer(); renderTable();
   };
 }
-function renderColRow(c, all) {
-  const row = document.createElement("div"); row.className = "col-row";
+function countLeaves(n) {
+  if (n.kind === "leaf") return 1;
+  return n.children.reduce((s,c) => s + countLeaves(c), 0);
+}
+function countVisLeaves(n) {
+  if (n.kind === "leaf") return n._visible ? 1 : 0;
+  return n.children.reduce((s,c) => s + countVisLeaves(c), 0);
+}
+function collectLeaves(arrOrNode, out) {
+  if (Array.isArray(arrOrNode)) { arrOrNode.forEach(x => collectLeaves(x, out)); return; }
+  if (arrOrNode.kind === "leaf") out.push(arrOrNode);
+  else arrOrNode.children.forEach(x => collectLeaves(x, out));
+}
+function renderColRow(c, lvl, allTree) {
+  const row = document.createElement("div");
+  row.className = "col-row" + (lvl>1?` lvl-${Math.min(lvl-1,3)}`:"");
   const cb = document.createElement("input"); cb.type="checkbox"; cb.checked = c._visible;
-  cb.onchange = () => { c._visible = cb.checked; };
-  const grip = document.createElement("span"); grip.className = "grip"; grip.textContent = "⠿";
-  const lbl = document.createElement("span"); lbl.className = "lbl" + (c._visible?"":" dim"); lbl.textContent = c.label;
-  const ord = document.createElement("span"); ord.className = "ord-btns";
-  const up = document.createElement("button"); up.textContent = "▲"; up.title="上移";
-  const dn = document.createElement("button"); dn.textContent = "▼"; dn.title="下移";
+  cb.onchange = () => { c._visible = cb.checked; openDrawer(); };
+  const lbl = document.createElement("span"); lbl.className = "lbl" + (c._visible?"":" dim");
+  lbl.textContent = c.label;
+  if (!c.is_default_visible) {
+    const tag = document.createElement("span"); tag.className="tag"; tag.textContent = "非默认"; tag.style.marginLeft="4px";
+    lbl.appendChild(tag);
+  }
+  const ord = document.createElement("span"); ord.className="ord-btns";
+  const up = document.createElement("button"); up.textContent="▲"; up.title="上移";
+  const dn = document.createElement("button"); dn.textContent="▼"; dn.title="下移";
+  const flat = []; collectLeaves(allTree, flat); flat.sort((a,b)=>a._order-b._order);
   function move(d) {
-    const idx = all.indexOf(c); const tgt = idx + d;
-    if (tgt < 0 || tgt >= all.length) return;
-    const other = all[tgt];
-    const tmp = c._order; c._order = other._order; other._order = tmp;
-    all.sort((a,b)=>a._order-b._order);
+    const idx = flat.indexOf(c); const tgt = idx + d;
+    if (tgt<0 || tgt>=flat.length) return;
+    const o = flat[tgt]; [c._order, o._order] = [o._order, c._order];
     openDrawer();
   }
   up.onclick = () => move(-1); dn.onclick = () => move(1);
   ord.append(up, dn);
-  const pin = document.createElement("span"); pin.className = "pin" + (c._pinned!=="none"?" on":""); pin.textContent = c._pinned==="left"?"📌左":c._pinned==="right"?"📌右":"📌";
-  pin.title = "固定列 (none → left → right → none)";
+  const pin = document.createElement("span"); pin.className="pin" + (c._pinned!=="none"?" on":"");
+  pin.textContent = c._pinned==="left"?"📌左":c._pinned==="right"?"📌右":"📌";
+  pin.title = "钉列 (none → left → right → none)";
   pin.onclick = () => {
     c._pinned = c._pinned==="none" ? "left" : c._pinned==="left" ? "right" : "none";
     pin.textContent = c._pinned==="left"?"📌左":c._pinned==="right"?"📌右":"📌";
-    pin.classList.toggle("on", c._pinned!=="none");
+    pin.classList.toggle("on", c._pinned !== "none");
   };
-  row.append(cb, grip, lbl, ord, pin); return row;
+  row.append(cb, lbl, ord, pin);
+  return row;
 }
 function closeDrawer() {
   document.getElementById("drawerMask").classList.remove("show");
   document.getElementById("drawer").classList.remove("show");
-  document.getElementById("drawer").setAttribute("aria-hidden","true");
 }
 
-/* =====================================================================
+/* ════════════════════════════════════════════════════════════════════
+   Audit popup
+   ════════════════════════════════════════════════════════════════════ */
+let auditEl = null;
+function showAudit(row, col, ev) {
+  if (auditEl) auditEl.remove();
+  auditEl = document.createElement("div"); auditEl.className="audit-pop";
+  const rect = ev.target.getBoundingClientRect();
+  auditEl.style.left = (rect.left - 120) + "px"; auditEl.style.top = (rect.bottom + 8) + "px";
+  const audit = row._audit?.[col.code] ?? [];
+  auditEl.innerHTML = `<h4>${col.label} · 来源版本</h4><ul></ul>
+    <div style="margin-top:8px;color:var(--muted);">合并规则: <code>latest_valid</code> · 来源优先级 <code>[crm > erp > wms]</code></div>`;
+  const ul = auditEl.querySelector("ul");
+  for (const a of audit) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="src-badge src-${a.source}">${a.source}</span>
+      <span class="ver">v${a.vno}</span>
+      <span class="spacer"></span>
+      <span class="${a.valid?'ok':'bad'}">${a.valid?'valid':'invalid'}</span>`;
+    ul.appendChild(li);
+  }
+  document.body.appendChild(auditEl);
+  setTimeout(() => document.addEventListener("click", _hide), 0);
+  function _hide(e) { if (auditEl && !auditEl.contains(e.target)) { auditEl.remove(); auditEl = null; document.removeEventListener("click", _hide); } }
+}
+
+/* ════════════════════════════════════════════════════════════════════
    Toast
-   ===================================================================== */
+   ════════════════════════════════════════════════════════════════════ */
 let toastT = 0;
 function toast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg; el.classList.add("show");
-  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 1600);
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 1800);
 }
 
-/* =====================================================================
-   Refresh entry —— 拉数据并重渲染
-   ===================================================================== */
+/* ════════════════════════════════════════════════════════════════════
+   Refresh
+   ════════════════════════════════════════════════════════════════════ */
 async function refresh() {
-  const tab = state.config.tabs.find(t => t.code === state.view);
-  const params = buildParams(state.config.filters, state.filterValues);
+  const cfg = state.config;
+  const params = {};
+  for (const f of cfg.filters) {
+    const v = state.filterValues[f.code];
+    if (v == null) continue;
+    if (f.kind === "date_range") {
+      if (v.from) params[f.param.from] = v.from;
+      if (v.to)   params[f.param.to]   = v.to;
+    } else {
+      params[f.param.value] = v.value ?? v;
+    }
+  }
+  params.version = state.version;
   params.page = state.page; params.page_size = state.page_size;
-  if (state.sort) params.sort = `${state.sort.field}:${state.sort.dir}`;
-  const r = await api(tab.endpoint, params);
+  // sort: prepend _row_favorite:desc when row_favorite enabled
+  const sorts = [];
+  if (cfg.primary_view.row_favorite?.sort_on_top) sorts.push("_row_favorite:desc");
+  if (state.sort) sorts.push(`${state.sort.field}:${state.sort.dir}`);
+  if (sorts.length) params.sort = sorts.join(",");
+  if (state.rowFilters.length) params.row_filter = JSON.stringify(state.rowFilters);
+
+  const r = await api(cfg.primary_view.endpoint, params);
   state.rows = r.items; state.total = r.total; state.totals = r.extras?.totals ?? null;
-  renderTabs(); renderTable();
+  state.version_used = r.version_used;
+  renderTable();
 }
 
-/* =====================================================================
+/* ════════════════════════════════════════════════════════════════════
    Bootstrap
-   ===================================================================== */
+   ════════════════════════════════════════════════════════════════════ */
 (async function init() {
   state.config = MOCK_CONFIG;
   for (const f of state.config.filters) if (f.default) state.filterValues[f.code] = {...f.default};
-  state.page_size = state.config.tabs[0].paging.default_page_size;
-  renderTitle(); renderFilterBar(); renderTabs(); await refresh();
+  state.page_size = state.config.primary_view.paging.default_page_size;
+  await loadVersionList();
+  renderTitle(); renderFilterBar(); renderVersionPill();
+  await refresh();
 
+  // density
+  document.getElementById("density").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.density = b.dataset.d;
+    document.querySelectorAll("#density button").forEach(x => x.classList.toggle("on", x === b));
+    document.getElementById("table").className = "grid density-" + state.density;
+  });
   document.getElementById("btnCols").onclick = openDrawer;
   document.getElementById("btnDrawerClose").onclick = closeDrawer;
   document.getElementById("btnDrawerCancel").onclick = closeDrawer;
   document.getElementById("drawerMask").onclick = closeDrawer;
-  document.getElementById("btnFlow").onclick = () => toast("管理员视图（占位）：在事实表单元格点 [crm v3] 徽章可看版本与有效性。");
+  document.getElementById("btnModalClose").onclick = closeDrilldown;
+  document.getElementById("modalMask").addEventListener("click", e => {
+    if (e.target.id === "modalMask") closeDrilldown();
+  });
+  document.getElementById("verPill").onclick = openVersionPopup;
+  window.addEventListener("resize", measureHeaderHeights);
 })();
 </script>
 </body>

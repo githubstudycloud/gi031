@@ -6,37 +6,44 @@
 ## 1. ER 一览
 
 ```
-                        ┌──────────────────┐
-                        │   report_type    │   报表类型登记
-                        └────────┬─────────┘
-                                 │ 1—N
-            ┌────────────────────┼────────────────────────────┐
-            │                    │                            │
-            ▼                    ▼                            ▼
-   ┌────────────────┐   ┌─────────────────┐         ┌──────────────────┐
-   │  field_def     │   │  dropdown_def   │         │     flow_def     │
-   │  字段定义      │   │  下拉/筛选定义  │         │   生成流程 DAG   │
-   └────────┬───────┘   └────────┬────────┘         └────────┬─────────┘
-            │ 1—N                │ 1—N                       │ 1—N
-            ▼                    ▼                           ▼
-   ┌────────────────┐   ┌─────────────────┐         ┌──────────────────┐
-   │ column_default │   │ dropdown_option │         │ flow_step / edge │
-   │ 默认列状态     │   │ (可选静态)      │         └────────┬─────────┘
-   └────────┬───────┘   └─────────────────┘                  │
-            │                                                ▼
-            ▼                                       ┌──────────────────┐
-   ┌────────────────┐    ┌───────────────────┐      │     flow_run     │
-   │ user_column_   │    │ user_favorite     │      │   执行记录       │
-   │ pref (per uid) │    │ (per uid + key)   │      └────────┬─────────┘
-   └────────────────┘    └───────────────────┘               │
-                                                              ▼
-   ┌────────────────────────────────────────────────────────────────┐
-   │  事实 / 快照 / 来源标记（按 report_type 动态生成的表）         │
-   │  report_fact_<T>     :  当日最终版                             │
-   │  report_snapshot_<T> :  按 (业务日期, 来源, 版本) 切片         │
-   │  source_mark         :  (报表, 业务日期, 来源, 版本) → valid?  │
-   └────────────────────────────────────────────────────────────────┘
+                          ┌──────────────────┐
+                          │   report_type    │
+                          └────────┬─────────┘
+                                   │ 1—N
+   ┌──────────────┬────────────────┼─────────────────┬────────────────┐
+   ▼              ▼                ▼                 ▼                ▼
+┌─────────┐  ┌──────────┐   ┌──────────────┐  ┌──────────────┐ ┌─────────────┐
+│column_  │  │ field_   │   │ dropdown_def │  │  flow_def    │ │drilldown_   │
+│group    │◀─│ def      │──▶│              │  │              │ │def          │
+│(树形)   │  │          │   └──────┬───────┘  └──────┬───────┘ └──────┬──────┘
+└─────────┘  └────┬─────┘          │ 1—N             │ 1—N            │
+                  │ 1—N                                                │
+                  ▼                                                    │
+            ┌────────────────┐                                         │
+            │ column_default │                                         │
+            └────────┬───────┘                                         │
+                     │                                                 │
+                     ▼                                                 │
+            ┌────────────────┐                                         │
+            │ user_column_   │   ┌──────────────────┐                  │
+            │ pref           │   │ user_favorite    │  (per dropdown)  │
+            └────────────────┘   │ user_row_        │  (per fact row)  │
+                                 │ favorite         │                  │
+                                 └──────────────────┘                  │
+                                                                       │
+   ┌───────────────────────────────────────────────────────────────────▼┐
+   │  事实 / 快照 / 版本 / 来源标记 / 下钻（按 report_type 动态生成）   │
+   │  report_fact_<T>          :  当日某版本 → 一行 = (date, dims, ver) │
+   │  report_fact_version      :  每日的版本号注册表 + 是否当前默认     │
+   │  report_snapshot_<T>      :  按 (业务日期, 来源, snap版本) 切片    │
+   │  source_mark              :  (报表, 业务日期, 来源, snap版) valid? │
+   │  drilldown_def 引用的明细表：通常是源表/事件表，按场景定           │
+   └────────────────────────────────────────────────────────────────────┘
 ```
+
+**两类"版本"不要混**：
+- **报表版本** `report_fact_version` —— merger 跑一次产生一个，同日可有多版（如 02:00 自动跑、09:00 人工补抓后再跑）。默认查询取每日 **最新版**。
+- **快照版本** `report_snapshot_<T>.version_no` —— 单个数据来源当日的第 N 次拉取，merger 用 `source_mark` 选 valid 的最大版本去合并。前端不直接感知，只用作"溯源"展示。
 
 ## 2. 元数据表（公共，所有报表共用）
 
@@ -65,15 +72,59 @@
 | `display_format` | jsonb | 前端展示规则：`{"kind":"number","precision":2,"thousand":true}` 等 |
 | `is_dimension` | bool | 是否是维度（参与分组/筛选） |
 | `is_measure` | bool | 是否是度量 |
-| `group_code` | text | 列分组名，用于列选择器分组展示 |
-| `sort_order` | int | 同组内顺序 |
+| `column_group_id` FK | bigint | 指向 `column_group` 树的某节点，**决定列在表头中所处的分类路径** |
+| `sort_order` | int | 同组内同级顺序 |
 | `is_hidden` | bool | **软隐藏**：列选择器中不出现，已有事实表列**保留**不丢数据 |
 | `is_deprecated` | bool | 标记为不再写入，但历史值保留 |
 | `physical_present` | bool | 当前事实表是否实际包含此列（删除前必须先把生成代码切走才能置 false） |
+| `drilldown_def_id` FK | bigint | nullable；非空表示该单元格可点击下钻，引用 `drilldown_def` |
+| `row_filterable` | bool | 该列在数据表格中是否允许行级筛选（按值匹配/范围/搜索） |
 
 **唯一约束**: `(report_type, code)` `WHERE NOT is_deleted`。
 
-### 2.3 `column_default` —— 后端"默认列展示"
+### 2.3 `column_group` —— 多层表头分组树
+
+支持 **2~5 层** 任意深度的分类结构。叶子由 `field_def.column_group_id` 指向；非叶子节点用于 `<thead>` 中的合并表头 (colspan)。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` PK | bigserial | |
+| `report_type` FK | text | |
+| `view` | enum(`summary`,`detail_modal`) | 同字段在不同视图可挂不同分组路径 |
+| `parent_id` FK | bigint | nullable；空表示根 |
+| `code` | text | 分组编码，调试 / 配置引用用 |
+| `label` | text | 表头显示文字 |
+| `sort_order` | int | 同 parent 下兄弟节点的顺序 |
+| `depth` | int | 计算列：根=1；叶子=N（最大 5）；用于约束最大深度与查询 |
+| `is_collapsible` | bool | 列选择器中是否允许整组折叠/展开 |
+
+**约束**：
+- 同一 `(report_type, view)` 下，`depth <= 5`。
+- 叶子节点（即 `field_def.column_group_id` 指向的那一行）不能再有子节点。
+- `parent_id` 不能成环（DB 触发器或应用层校验）。
+
+**查询模式**：组装 `/config` 响应时一次 RECURSIVE CTE 拿整棵树，再把叶子节点替换成 `field_def + column_default` 的合并对象 → 输出为 `header_tree`（详见 03-api-spec §1.1）。
+
+### 2.4 `drilldown_def` —— 单元格下钻定义
+
+某个数值列（如"订单数"）支持点击数字弹出弹框，展示明细行的来源 / 字段 / 查询参数。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` PK | bigserial | |
+| `code` | text | 唯一编码，例 `daily_sales.orders_to_orders` |
+| `title` | text | 弹框标题，例 "订单明细 — {region_label} / {product_code} / {business_date}" |
+| `data_source` | enum(`sql`,`api`) | |
+| `source_config` | jsonb | 与 `dropdown_def.source_config` 类似；可用 `{row.<col>}`、`{filter.<code>}`、`{cell.value}`、`{business_date}` 占位符 |
+| `column_group_view` | text | 用 `column_group` 中 `view='detail_modal'` 的某子树渲染弹框内的表头 |
+| `paging` | jsonb | `{enabled:true, page_size:50}` |
+| `sortable_by` | text[] | |
+| `default_sort` | jsonb | |
+| `supports_row_favorite` | bool | 弹框内的明细行也可收藏（默认 false） |
+
+> 一个下钻定义可被多个字段引用（多列共用一份弹框 schema）。
+
+### 2.5 `column_default` —— 后端"默认列展示"
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -87,7 +138,7 @@
 
 `PK = (report_type, field_code, view)`。
 
-### 2.4 `dropdown_def` —— 筛选/下拉定义
+### 2.6 `dropdown_def` —— 筛选/下拉定义
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -131,7 +182,7 @@
 }
 ```
 
-### 2.5 `dropdown_option` —— 静态选项缓存（可选）
+### 2.7 `dropdown_option` —— 静态选项缓存（可选）
 
 如果 `dropdown_def.data_source = static`，选项直接存在 `source_config.options`。如果是 SQL/API，**不在此表落地**（按需查），但可以加一张 `dropdown_option_cache` 由 Redis/物化视图扛量。
 
@@ -168,7 +219,23 @@
 
 > 个人定制 ≠ 后端默认：前端从 config 拿到后端默认，再 merge 用户偏好。"恢复默认"= 清掉 user_column_pref 中该 (user, report, view) 的所有行。
 
-### 3.3 `user_filter_preset` —— 用户保存的筛选条件组合（V1.1）
+### 3.3 `user_row_favorite` —— 数据行收藏
+
+针对**事实表中的某一行**收藏（不是下拉选项）；在表格中支持"收藏置顶"的排序行为。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `user_id` | text | |
+| `report_type` | text | |
+| `business_date` | date | 与具体日期挂钩（避免歧义）；如果是"跨日期持续收藏"用 `NULL` |
+| `business_key` | jsonb | 该报表的主键字段值，例 `{"region_code":"CN-31","product_code":"P001"}` |
+| `favorited_at` | timestamptz | |
+
+`PK = (user_id, report_type, business_date, business_key)`，`business_key` 用 jsonb 等价比较（或抽 hash 列）。
+
+排序：API 层支持 `sort=is_row_favorite:desc,...`；服务端在返回行时根据 `user_row_favorite` 给每行加 `_is_favorite: bool`。
+
+### 3.4 `user_filter_preset` —— 用户保存的筛选条件组合（V1.1）
 
 预留表，本期不实现。
 
@@ -227,33 +294,69 @@
 
 每个分支一行；用来失败重跑、看哪个来源失败。
 
-## 5. 事实 / 快照 / 来源标记（按报表类型）
+## 5. 事实 / 版本 / 快照 / 来源标记（按报表类型）
 
 > 注意：`report_fact_<T>` 与 `report_snapshot_<T>` 的列结构由 `field_def.physical_present = true` 的行**生成 + Alembic 迁移**得到。**修改字段不会写直 DDL；走 generator → review → migration → apply** 流程，保证可审计。
 
-### 5.1 `report_fact_<T>`
+### 5.1 `report_fact_<T>` —— 支持每日多版本
 
-当日最终版，**1 行 = 1 个业务主键**（如一个区域 × 一个产品 × 一天）。
+每日可以有多个"最终版"——例如 02:00 自动跑出 v1，09:00 人工补抓后 merger 重跑出 v2。**所有版本都保留**，前端默认查询每日最新版。
 
 ```sql
 CREATE TABLE report_fact_daily_sales (
   business_date date NOT NULL,
+  version_no    int  NOT NULL,             -- ← 报表级版本，与 snapshot 的 source-version 不同
   region_code   text NOT NULL,
   product_code  text NOT NULL,
   -- 度量列：从 field_def 生成
   gmv           numeric(18,2),
   orders        bigint,
   -- ...
-  -- 审计列：列粒度告诉你"这一格"是从哪个版本来的
-  source_snapshot_ids jsonb,  -- {"gmv": 1234, "orders": 1235}
+  -- 审计列：列粒度告诉你"这一格"是从哪个 snapshot 来的
+  source_snapshot_ids jsonb,   -- {"gmv": 1234, "orders": 1235}
   generated_at  timestamptz NOT NULL,
-  PRIMARY KEY (business_date, region_code, product_code)
+  PRIMARY KEY (business_date, version_no, region_code, product_code)
 );
+CREATE INDEX ON report_fact_daily_sales (business_date, version_no);
 ```
 
-`source_snapshot_ids` 让你点击单元格能溯源到具体的 `report_snapshot_<T>.id`。
+### 5.2 `report_fact_version` —— 每日版本注册表（公共表）
 
-### 5.2 `report_snapshot_<T>`
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `report_type` | text | |
+| `business_date` | date | |
+| `version_no` | int | 当日第 N 个最终版 |
+| `flow_run_id` FK | bigint | 哪次执行产出的 |
+| `status` | enum(`active`,`superseded`,`rolled_back`) | active=可被查；superseded=被新版本替换；rolled_back=人工回退 |
+| `generated_at` | timestamptz | |
+| `generated_by` | text | "scheduler" / "manual:vickroy" / "reconcile" |
+| `note` | text | 例 "补抓 wms 后重算" |
+
+`PK = (report_type, business_date, version_no)`。
+
+**默认"取每日最新版"** 的实现：服务端用窗口函数解析，把查询折算成
+```sql
+SELECT *
+FROM report_fact_daily_sales f
+JOIN (
+  SELECT business_date, MAX(version_no) AS v
+  FROM report_fact_version
+  WHERE report_type = 'daily_sales'
+    AND status = 'active'
+    AND business_date BETWEEN :from AND :to
+  GROUP BY business_date
+) latest ON f.business_date = latest.business_date AND f.version_no = latest.v
+WHERE f.business_date BETWEEN :from AND :to
+  AND ...
+```
+
+API 层接受 `version` 参数（详见 03-api-spec §2.1）：
+- `latest`（默认）→ 上述窗口函数
+- `<int>` → 指定版本号；对范围查询时报错或要求点日期
+- `all` → 不做版本过滤，返回所有版本（前端做对比视图，本期不实现）
+
+### 5.3 `report_snapshot_<T>`
 
 每个 (业务日期, 来源, 版本) 一行。
 
@@ -274,7 +377,7 @@ CREATE INDEX ON report_snapshot_daily_sales (business_date, source_code);
 
 > `payload` 用 JSONB 而不是宽表列，是因为不同来源给的列不一样，避免 NULL 海洋。事实表才落规范化列。
 
-### 5.3 `source_mark` —— 人工标记有效性（公共表）
+### 5.4 `source_mark` —— 人工标记快照有效性（公共表）
 
 | 列 | 类型 |
 |---|---|
