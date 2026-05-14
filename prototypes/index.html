@@ -1,0 +1,1088 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>gi031 · 报表平台原型</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e3e5ea;
+    --border-strong: #c9ccd3;
+    --text: #1f2330;
+    --muted: #6b7180;
+    --primary: #2563eb;
+    --primary-50: #eef4ff;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --row-hover: #f3f6fb;
+    --row-stripe: #fafbfc;
+    --shadow: 0 2px 8px rgba(0,0,0,.06);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  button { font: inherit; cursor: pointer; }
+  .app { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+  /* === Header === */
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+  .topbar h1 { font-size: 18px; margin: 0; flex: 1; }
+  .topbar .ver { color: var(--muted); font-size: 12px; }
+  .btn { background: #fff; border: 1px solid var(--border-strong); border-radius: 6px;
+    padding: 6px 12px; color: var(--text); transition: all .15s; }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: #1d4ed8; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--primary); background: var(--primary-50); }
+  .btn.sm { padding: 3px 8px; font-size: 12px; }
+
+  /* === Filter bar === */
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
+  .filterbar { padding: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field > label { font-size: 11px; color: var(--muted); }
+  .field-input { display: flex; align-items: center; gap: 6px; padding: 5px 8px; min-height: 28px;
+    border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; min-width: 180px; cursor: pointer; }
+  .field-input.active { border-color: var(--primary); }
+  .field-input input { border: 0; outline: 0; background: transparent; flex: 1; font: inherit; min-width: 60px; }
+  .chip { background: var(--primary-50); color: var(--primary); border-radius: 4px; padding: 1px 6px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+  .chip .x { color: var(--muted); cursor: pointer; }
+  .chip .x:hover { color: var(--danger); }
+  .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  /* === Tabs === */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-top: 12px; padding: 0 12px; background: var(--panel);
+    border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; }
+  .tab { padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
+  .tab.active { color: var(--primary); border-color: var(--primary); font-weight: 500; }
+  .tab .count { color: var(--muted); font-size: 11px; margin-left: 4px; }
+
+  /* === Table === */
+  .tableshell { background: var(--panel); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px;
+    overflow: hidden; }
+  .toolbar { padding: 8px 12px; display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .table-wrap { overflow: auto; max-height: 520px; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+  thead th { position: sticky; top: 0; background: #f1f3f7; border-bottom: 1px solid var(--border); padding: 8px 10px;
+    text-align: left; font-weight: 500; white-space: nowrap; user-select: none; }
+  thead th.sortable { cursor: pointer; }
+  thead th .sort { color: var(--muted); margin-left: 4px; font-size: 10px; }
+  thead th.sorted .sort { color: var(--primary); }
+  th.pin-left, td.pin-left { position: sticky; left: 0; background: inherit; z-index: 1; box-shadow: 1px 0 0 var(--border); }
+  th.pin-right, td.pin-right { position: sticky; right: 0; background: inherit; z-index: 1; box-shadow: -1px 0 0 var(--border); }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: var(--row-stripe); }
+  tbody tr:hover { background: var(--row-hover); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.empty { color: var(--muted); font-style: italic; }
+  .src-badge { display: inline-block; font-size: 10px; padding: 0 4px; border-radius: 3px; vertical-align: middle; margin-left: 4px; }
+  .src-crm { background: #fde7e7; color: #b91c1c; }
+  .src-erp { background: #e0f2fe; color: #075985; }
+  .src-wms { background: #dcfce7; color: #166534; }
+  .src-csv { background: #fef3c7; color: #92400e; }
+  .pagination { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+  .pagination .spacer { flex: 1; }
+
+  /* === Dropdown popup === */
+  .popup { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: 8px;
+    box-shadow: var(--shadow-lg); z-index: 100; min-width: 280px; max-width: 360px; }
+  .popup-head { padding: 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+  .popup-head input.q { width: 100%; border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 8px; outline: 0; }
+  .popup-head .row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .popup-head select { border: 1px solid var(--border-strong); border-radius: 4px; padding: 2px 4px; font: inherit; font-size: 11px; background: #fff; }
+  .popup-body { max-height: 280px; overflow: auto; }
+  .opt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  .opt:hover { background: var(--row-hover); }
+  .opt.sel { background: var(--primary-50); color: var(--primary); }
+  .opt .lbl { flex: 1; }
+  .opt .meta { color: var(--muted); font-size: 11px; }
+  .opt .star { color: #d4d4d8; cursor: pointer; font-size: 16px; padding: 0 2px; }
+  .opt .star.on { color: #f59e0b; }
+  .opt .caret { color: var(--muted); }
+  .opt .indent { display: inline-block; }
+  .popup-foot { padding: 6px 10px; border-top: 1px solid var(--border); display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
+  .popup-foot .more { color: var(--primary); cursor: pointer; }
+
+  /* === Drawer === */
+  .drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 200; display: none; }
+  .drawer-mask.show { display: block; }
+  .drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 380px; background: #fff;
+    border-left: 1px solid var(--border-strong); box-shadow: -8px 0 24px rgba(0,0,0,.08); z-index: 201;
+    transform: translateX(100%); transition: transform .2s ease; display: flex; flex-direction: column; }
+  .drawer.show { transform: translateX(0); }
+  .drawer-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .drawer-head h2 { margin: 0; font-size: 15px; flex: 1; }
+  .drawer-body { padding: 8px 0; overflow: auto; flex: 1; }
+  .drawer-foot { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+  .drawer-foot label { margin-right: auto; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .group { margin: 4px 0; }
+  .group-head { display: flex; align-items: center; gap: 6px; padding: 6px 16px; color: var(--muted); font-size: 11px; font-weight: 500; user-select: none; cursor: pointer; }
+  .group-head .ic { width: 12px; }
+  .group-head .ct { margin-left: auto; }
+  .col-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 4px; }
+  .col-row:hover { background: var(--row-hover); }
+  .col-row .grip { color: var(--border-strong); cursor: grab; user-select: none; }
+  .col-row input[type=checkbox] { accent-color: var(--primary); }
+  .col-row .lbl { flex: 1; }
+  .col-row .lbl.dim { color: var(--muted); }
+  .col-row .pin { font-size: 13px; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  .col-row .pin.on { color: var(--primary); }
+  .col-row .ord-btns { display: flex; flex-direction: column; gap: 1px; }
+  .col-row .ord-btns button { border: 0; background: transparent; padding: 0 2px; color: var(--muted); cursor: pointer; line-height: 1; font-size: 11px; }
+  .col-row .ord-btns button:hover { color: var(--primary); }
+
+  /* === Source mark widget (admin demo) === */
+  .audit-pop { position: fixed; background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg);
+    z-index: 300; min-width: 320px; padding: 10px 12px; font-size: 12px; }
+  .audit-pop h4 { margin: 0 0 8px; font-size: 13px; }
+  .audit-pop ul { margin: 0; padding: 0; list-style: none; }
+  .audit-pop li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .audit-pop li:last-child { border: 0; }
+  .audit-pop .ver { font-variant-numeric: tabular-nums; }
+  .audit-pop .ok  { color: var(--success); }
+  .audit-pop .bad { color: var(--danger); }
+
+  /* Misc */
+  .kbd { background: #f1f3f7; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px;
+    padding: 0 4px; font-family: ui-monospace,SFMono-Regular,Consolas,monospace; font-size: 11px; color: var(--muted); }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1f2330; color: #fff;
+    padding: 8px 14px; border-radius: 6px; z-index: 500; box-shadow: var(--shadow-lg); font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <div class="topbar">
+    <h1 id="reportTitle">每日销售报表</h1>
+    <span class="ver" id="cfgVer"></span>
+    <button class="btn" id="btnFlow" title="管理员：人工标记来源">⚙ 来源版本</button>
+    <button class="btn" id="btnCols">≡ 列配置</button>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="panel filterbar" id="filterBar"></div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs"></div>
+
+  <!-- Table -->
+  <div class="tableshell">
+    <div class="toolbar">
+      <span id="rowMeta"></span>
+      <span class="spacer"></span>
+      <span>提示：表头点击排序；<span class="kbd">⭐</span> 收藏；维度/度量列可在右侧 <span class="kbd">≡ 列配置</span> 调整</span>
+    </div>
+    <div class="table-wrap"><table id="table"></table></div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<!-- Drawer for column config -->
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>列配置</h2>
+    <button class="btn sm ghost" id="btnRestoreDefault">恢复默认</button>
+    <button class="btn sm ghost" id="btnDrawerClose">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-foot">
+    <label><input type="checkbox" id="chkSaveDefault" /> 保存为我的默认</label>
+    <button class="btn sm" id="btnDrawerCancel">取消</button>
+    <button class="btn sm primary" id="btnDrawerApply">应用</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   Mock config —— 模拟 GET /api/reports/daily_sales/config 的响应。
+   未来由真实后端按 02-data-model + 03-api-spec 组装。
+   ===================================================================== */
+const MOCK_CONFIG = {
+  meta: {
+    report_type: "daily_sales",
+    name: "每日销售报表",
+    version: 17,
+    summary_endpoint: "/api/reports/daily_sales/summary",
+    detail_endpoint:  "/api/reports/daily_sales/detail",
+    user_pref_endpoint: "/api/users/me/columns/daily_sales"
+  },
+  filters: [
+    {
+      code: "business_date", label: "业务日期", kind: "date_range",
+      required: true, default: { from: "2026-05-13", to: "2026-05-13" },
+      param: { from: "date_from", to: "date_to" }
+    },
+    {
+      code: "region", label: "区域", kind: "hierarchy_dropdown",
+      param: { value: "region_code" },
+      source: {
+        endpoint: "/api/dropdowns/region_tree",
+        paging: { enabled: true, page_size: 50 },
+        sortable_by: ["label", "usage_count", "is_favorite"],
+        default_sort: [{field:"is_favorite",dir:"desc"},{field:"label",dir:"asc"}],
+        supports_favorite: true, supports_filter: true,
+        params_in: ["parent","q","page","page_size","sort","only_favorites"]
+      }
+    },
+    {
+      code: "product", label: "产品", kind: "search_dropdown",
+      param: { value: "product_code" },
+      depends_on: ["region"],
+      source: {
+        endpoint: "/api/dropdowns/product_search",
+        paging: { enabled: true, page_size: 30 },
+        sortable_by: ["label","sales_rank"],
+        default_sort: [{field:"sales_rank",dir:"desc"}],
+        supports_favorite: true, supports_filter: false,
+        params_in: ["q","page","page_size","sort","region_code"]
+      }
+    }
+  ],
+  tabs: [
+    { code:"summary", label:"汇总", endpoint:"/api/reports/daily_sales/summary",
+      sortable:true, paging:{enabled:true, default_page_size:50} },
+    { code:"detail",  label:"详情", endpoint:"/api/reports/daily_sales/detail",
+      sortable:true, paging:{enabled:true, default_page_size:100} }
+  ],
+  columns: {
+    summary: [
+      { code:"region_code", label:"区域",   data_type:"string",  group:"维度",
+        is_default_visible:true,  default_order:1,  default_width:120, default_pinned:"left",
+        sortable:true, filterable:true,  display:{kind:"text"} },
+      { code:"product_code", label:"产品",  data_type:"string",  group:"维度",
+        is_default_visible:true,  default_order:2,  default_width:120,
+        sortable:true, display:{kind:"text"} },
+      { code:"gmv",          label:"GMV",  data_type:"decimal", group:"度量",
+        is_default_visible:true,  default_order:5,  default_width:140, default_pinned:"right",
+        sortable:true, display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
+      { code:"orders",       label:"订单数", data_type:"int",    group:"度量",
+        is_default_visible:true,  default_order:6,  sortable:true,
+        display:{kind:"number"} },
+      { code:"refund",       label:"退款金额", data_type:"decimal", group:"度量",
+        is_default_visible:false, default_order:7,
+        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
+      { code:"conv_rate",    label:"转化率", data_type:"decimal", group:"度量",
+        is_default_visible:true,  default_order:8,
+        display:{kind:"percent", precision:1} },
+      { code:"avg_price",    label:"客单价", data_type:"decimal", group:"度量",
+        is_default_visible:false, default_order:9,
+        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
+      { code:"stock",        label:"库存量",  data_type:"int",    group:"度量",
+        is_default_visible:false, default_order:10,
+        display:{kind:"number"} },
+      { code:"safe_days",    label:"安全库存天数", data_type:"decimal", group:"高级",
+        is_default_visible:false, default_order:11,
+        display:{kind:"number", precision:1} },
+      { code:"gmv_qoq",      label:"GMV同比", data_type:"decimal", group:"高级",
+        is_default_visible:false, default_order:12,
+        display:{kind:"percent", precision:1} }
+    ],
+    detail: [
+      { code:"region_code", label:"区域", data_type:"string", group:"维度",
+        is_default_visible:true, default_order:1, default_pinned:"left",
+        sortable:true, display:{kind:"text"} },
+      { code:"product_code", label:"产品", data_type:"string", group:"维度",
+        is_default_visible:true, default_order:2, sortable:true, display:{kind:"text"} },
+      { code:"order_id",    label:"订单号", data_type:"string", group:"维度",
+        is_default_visible:true, default_order:3, sortable:false, display:{kind:"text"} },
+      { code:"order_amount", label:"金额", data_type:"decimal", group:"度量",
+        is_default_visible:true, default_order:4, sortable:true,
+        display:{kind:"number", precision:2, thousand:true, unit:"¥"} },
+      { code:"order_time",  label:"下单时间", data_type:"datetime", group:"维度",
+        is_default_visible:true, default_order:5, sortable:true, display:{kind:"text"} },
+      { code:"channel",     label:"渠道", data_type:"string", group:"维度",
+        is_default_visible:false, default_order:6, display:{kind:"text"} }
+    ]
+  }
+};
+
+/* =====================================================================
+   Mock dropdown sources
+   ===================================================================== */
+const MOCK_REGIONS = {
+  // 层级：null(顶层) → 大区 → 省 → 市
+  null: [
+    { value:"CN",  label:"中国", has_children:true,  usage_count:9999 },
+  ],
+  "CN": [
+    { value:"CN-EAST",  label:"华东",  has_children:true, usage_count:800 },
+    { value:"CN-SOUTH", label:"华南",  has_children:true, usage_count:600 },
+    { value:"CN-NORTH", label:"华北",  has_children:true, usage_count:500 },
+    { value:"CN-WEST",  label:"西部",  has_children:true, usage_count:300 },
+  ],
+  "CN-EAST": [
+    { value:"CN-31", label:"上海", has_children:false, usage_count:420 },
+    { value:"CN-32", label:"江苏", has_children:true,  usage_count:380 },
+    { value:"CN-33", label:"浙江", has_children:true,  usage_count:360 },
+    { value:"CN-34", label:"安徽", has_children:true,  usage_count:150 },
+    { value:"CN-35", label:"福建", has_children:true,  usage_count:120 },
+  ],
+  "CN-SOUTH": [
+    { value:"CN-44", label:"广东", has_children:true,  usage_count:550 },
+    { value:"CN-45", label:"广西", has_children:true,  usage_count:90  },
+  ],
+  "CN-NORTH": [
+    { value:"CN-11", label:"北京", has_children:false, usage_count:480 },
+    { value:"CN-13", label:"河北", has_children:true,  usage_count:140 },
+  ],
+  "CN-32": [
+    { value:"CN-3201", label:"南京", has_children:false, usage_count:130 },
+    { value:"CN-3205", label:"苏州", has_children:false, usage_count:210 },
+    { value:"CN-3206", label:"无锡", has_children:false, usage_count:90  },
+  ]
+};
+const MOCK_PRODUCTS = {
+  any: [
+    { value:"P001", label:"P001 · 拿铁咖啡 250ml", sales_rank:1 },
+    { value:"P002", label:"P002 · 美式咖啡 250ml", sales_rank:2 },
+    { value:"P003", label:"P003 · 卡布奇诺 250ml", sales_rank:3 },
+    { value:"P004", label:"P004 · 摩卡咖啡 350ml", sales_rank:4 },
+    { value:"P005", label:"P005 · 燕麦拿铁 250ml", sales_rank:5 },
+    { value:"P006", label:"P006 · 椰香拿铁 350ml", sales_rank:6 },
+    { value:"P007", label:"P007 · 焦糖玛奇朵 350ml", sales_rank:7 },
+    { value:"P008", label:"P008 · 抹茶拿铁 350ml", sales_rank:8 },
+    { value:"P009", label:"P009 · 茉莉花茶 500ml", sales_rank:9 },
+    { value:"P010", label:"P010 · 红茶玛奇朵 350ml", sales_rank:10 },
+    { value:"P011", label:"P011 · 蜜桃乌龙 500ml", sales_rank:11 },
+    { value:"P012", label:"P012 · 椰汁西米露 350ml", sales_rank:12 },
+  ]
+};
+
+/* =====================================================================
+   Mock fact data (after merger) —— 每一格附 source_snapshot_ids
+   ===================================================================== */
+const SRC = (s, vno) => ({source:s, vno, valid:true});
+function mockSummaryRows() {
+  const regions = ["CN-31","CN-3205","CN-44","CN-11"];
+  const regionLabel = {"CN-31":"上海","CN-3205":"苏州","CN-44":"广东","CN-11":"北京"};
+  const products = ["P001","P002","P003","P004","P005","P006","P007","P008"];
+  const rows = [];
+  for (const r of regions) for (const p of products) {
+    const gmv = +(Math.random()*15000 + 800).toFixed(2);
+    const orders = Math.floor(Math.random()*60 + 5);
+    rows.push({
+      region_code: r, region_label: regionLabel[r],
+      product_code: p,
+      gmv, orders,
+      refund:    +(gmv * (0.01+Math.random()*0.04)).toFixed(2),
+      conv_rate: +(Math.random()*4 + 1).toFixed(2),       // 百分比，存原值
+      avg_price: +(gmv/orders).toFixed(2),
+      stock:     Math.floor(Math.random()*500 + 50),
+      safe_days: +(Math.random()*15 + 3).toFixed(1),
+      gmv_qoq:   +(Math.random()*30 - 5).toFixed(2),
+      _audit: {
+        gmv:     [SRC("crm",3), {source:"erp",vno:2,valid:false}],
+        orders:  [SRC("erp",2)],
+        refund:  [SRC("erp",2)],
+        stock:   [SRC("wms",1)],
+        safe_days: [SRC("compute",1)]
+      }
+    });
+  }
+  return rows;
+}
+function mockDetailRows() {
+  const rows = [];
+  for (let i=0; i<120; i++) {
+    rows.push({
+      region_code: ["CN-31","CN-3205","CN-44","CN-11"][i%4],
+      product_code: "P00" + ((i%8)+1),
+      order_id: "OD" + (202605130000 + i),
+      order_amount: +(Math.random()*1200 + 50).toFixed(2),
+      order_time: "2026-05-13 " + String(8 + (i%14)).padStart(2,"0") + ":" + String((i*7)%60).padStart(2,"0"),
+      channel: ["线上","门店","小程序","三方"][i%4]
+    });
+  }
+  return rows;
+}
+const MOCK_SUMMARY = mockSummaryRows();
+const MOCK_DETAIL  = mockDetailRows();
+
+/* =====================================================================
+   Mock fetch (替换为真 fetch 即可)
+   ===================================================================== */
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function api(path, params={}){
+  await delay(60);   // 模拟网络
+  // /api/dropdowns/region_tree
+  if (path === "/api/dropdowns/region_tree") {
+    const parent = params.parent ?? null;
+    let items = (MOCK_REGIONS[parent] ?? []).slice();
+    if (params.q) items = items.filter(x => x.label.includes(params.q));
+    items = items.map(x => ({...x, is_favorite: !!FAV.region_tree[x.value]}));
+    if (params.only_favorites) items = items.filter(x => x.is_favorite);
+    if (params.sort) {
+      const sorters = params.sort.split(",").map(s => s.split(":"));
+      items.sort((a,b) => {
+        for (const [f,d] of sorters) {
+          const av = f==="is_favorite" ? (a.is_favorite?1:0) : (a[f] ?? a.label);
+          const bv = f==="is_favorite" ? (b.is_favorite?1:0) : (b[f] ?? b.label);
+          if (av<bv) return d==="asc"?-1:1;
+          if (av>bv) return d==="asc"?1:-1;
+        }
+        return 0;
+      });
+    }
+    const ps = params.page_size ?? 50, pg = params.page ?? 1;
+    const total = items.length;
+    items = items.slice((pg-1)*ps, pg*ps);
+    return { items, page: pg, page_size: ps, total, has_more: pg*ps<total };
+  }
+  // /api/dropdowns/product_search
+  if (path === "/api/dropdowns/product_search") {
+    let items = MOCK_PRODUCTS.any.slice();
+    if (params.q) items = items.filter(x => x.label.includes(params.q) || x.value.includes(params.q.toUpperCase()));
+    items = items.map(x => ({...x, is_favorite: !!FAV.product_search[x.value]}));
+    if (params.sort) {
+      const sorters = params.sort.split(",").map(s => s.split(":"));
+      items.sort((a,b) => {
+        for (const [f,d] of sorters) {
+          const av = a[f] ?? 0, bv = b[f] ?? 0;
+          if (av<bv) return d==="asc"?-1:1;
+          if (av>bv) return d==="asc"?1:-1;
+        }
+        return 0;
+      });
+    }
+    const ps = params.page_size ?? 30, pg = params.page ?? 1;
+    const total = items.length;
+    items = items.slice((pg-1)*ps, pg*ps);
+    return { items, page: pg, page_size: ps, total, has_more: pg*ps<total };
+  }
+  // /api/reports/.../summary | detail
+  if (path.endsWith("/summary") || path.endsWith("/detail")) {
+    const base = path.endsWith("/summary") ? MOCK_SUMMARY : MOCK_DETAIL;
+    let rows = base.slice();
+    // 筛选
+    if (params.region_code) {
+      const r = String(params.region_code);
+      rows = rows.filter(x => x.region_code === r || (r.length<6 && x.region_code.startsWith(r)));
+    }
+    if (params.product_code) rows = rows.filter(x => x.product_code === params.product_code);
+    // 排序
+    if (params.sort) {
+      const [f,d] = params.sort.split(":");
+      rows.sort((a,b) => (a[f] > b[f] ? 1 : a[f] < b[f] ? -1 : 0) * (d==="desc"?-1:1));
+    }
+    const ps = +params.page_size || 50, pg = +params.page || 1;
+    const total = rows.length;
+    const page_rows = rows.slice((pg-1)*ps, pg*ps);
+    const totals = path.endsWith("/summary") ? {
+      gmv: rows.reduce((s,r) => s+r.gmv, 0),
+      orders: rows.reduce((s,r) => s+r.orders, 0)
+    } : null;
+    return { items: page_rows, page: pg, page_size: ps, total, has_more: pg*ps<total, extras: totals?{totals}:null };
+  }
+  // user prefs (in-memory)
+  if (path.startsWith("/api/users/me/columns/")) {
+    if (params.__method === "PUT") { USER_PREFS[params.view] = params.items; return { ok:true }; }
+    if (params.__method === "DELETE") { USER_PREFS[params.view] = []; return { ok:true }; }
+    return { view: params.view, is_personal_default: true, items: USER_PREFS[params.view] ?? [] };
+  }
+  if (path.startsWith("/api/users/me/favorites/")) {
+    const key = path.split("/").pop();
+    FAV[key] = FAV[key] || {};
+    if (params.favorited) FAV[key][params.option_value] = true;
+    else delete FAV[key][params.option_value];
+    return { ok:true };
+  }
+  throw new Error("unknown api " + path);
+}
+const FAV = { region_tree: {"CN-31":true}, product_search: {"P001":true} };
+const USER_PREFS = { summary: [], detail: [] };
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const state = {
+  config: null,
+  view: "summary",
+  filterValues: {},  // {business_date:{from,to}, region:"CN-31", product:"P001"}
+  sort: null,        // {field,dir}
+  page: 1, page_size: 50,
+  rows: [], total: 0, totals: null,
+  cols: [],          // 合并后的列
+};
+
+/* =====================================================================
+   Pure functions
+   ===================================================================== */
+function mergeColumns(defaults, prefs) {
+  const p = new Map((prefs ?? []).map(x => [x.field_code, x]));
+  return defaults.map(c => {
+    const pr = p.get(c.code);
+    return {
+      ...c,
+      _visible: pr?.is_visible ?? c.is_default_visible,
+      _order:   pr?.order_idx  ?? c.default_order,
+      _width:   pr?.width      ?? c.default_width,
+      _pinned:  pr?.pinned     ?? c.default_pinned ?? "none",
+    };
+  }).sort((a,b) => a._order - b._order);
+}
+function buildParams(filters, values) {
+  const params = {};
+  for (const f of filters) {
+    const v = values[f.code];
+    if (v == null) continue;
+    if (f.kind === "date_range") {
+      if (v.from) params[f.param.from] = v.from;
+      if (v.to)   params[f.param.to]   = v.to;
+    } else {
+      params[f.param.value] = v;
+    }
+  }
+  return params;
+}
+function fmt(v, disp) {
+  if (v == null || v === "") return {text:"—", cls:"empty num"};
+  if (!disp || disp.kind === "text") return {text:String(v), cls:""};
+  if (disp.kind === "number") {
+    const n = Number(v); if (Number.isNaN(n)) return {text:String(v), cls:""};
+    const s = n.toLocaleString("zh-CN", {minimumFractionDigits: disp.precision ?? 0, maximumFractionDigits: disp.precision ?? 0});
+    return {text: (disp.unit ?? "") + s, cls:"num"};
+  }
+  if (disp.kind === "percent") return {text: Number(v).toFixed(disp.precision ?? 1) + "%", cls:"num"};
+  return {text:String(v), cls:""};
+}
+
+/* =====================================================================
+   Renderers
+   ===================================================================== */
+function renderTitle() {
+  document.getElementById("reportTitle").textContent = state.config.meta.name;
+  document.getElementById("cfgVer").textContent = "v" + state.config.meta.version + " · " + state.config.meta.report_type;
+}
+function renderTabs() {
+  const el = document.getElementById("tabs");
+  el.innerHTML = "";
+  for (const t of state.config.tabs) {
+    const a = document.createElement("div");
+    a.className = "tab" + (state.view === t.code ? " active" : "");
+    a.innerHTML = `${t.label}`;
+    a.onclick = () => { state.view = t.code; state.sort = null; state.page = 1; refresh(); };
+    el.appendChild(a);
+  }
+}
+function renderFilterBar() {
+  const bar = document.getElementById("filterBar");
+  bar.innerHTML = "";
+  for (const f of state.config.filters) {
+    const wrap = document.createElement("div"); wrap.className = "field";
+    const lbl = document.createElement("label"); lbl.textContent = f.label + (f.required ? " *" : "");
+    wrap.appendChild(lbl);
+
+    if (f.kind === "date_range") {
+      const inp = document.createElement("div"); inp.className = "field-input";
+      const fromI = document.createElement("input"); fromI.type = "date";
+      const toI   = document.createElement("input"); toI.type = "date";
+      const v = state.filterValues[f.code] || f.default || {};
+      fromI.value = v.from || ""; toI.value = v.to || "";
+      fromI.onchange = () => { v.from = fromI.value; state.filterValues[f.code] = {...v}; };
+      toI.onchange   = () => { v.to   = toI.value;   state.filterValues[f.code] = {...v}; };
+      inp.append(fromI, document.createTextNode(" ~ "), toI);
+      wrap.appendChild(inp);
+    } else if (f.kind === "hierarchy_dropdown") {
+      wrap.appendChild(buildDropdownInput(f, "hierarchy"));
+    } else if (f.kind === "search_dropdown") {
+      wrap.appendChild(buildDropdownInput(f, "search"));
+    }
+    bar.appendChild(wrap);
+  }
+  const acts = document.createElement("div"); acts.className = "actions";
+  const reset = document.createElement("button"); reset.className = "btn ghost"; reset.textContent = "重置";
+  reset.onclick = () => { state.filterValues = {}; renderFilterBar(); refresh(); };
+  const query = document.createElement("button"); query.className = "btn primary"; query.textContent = "查询";
+  query.onclick = () => { state.page = 1; refresh(); };
+  acts.append(reset, query); bar.appendChild(acts);
+}
+function buildDropdownInput(filter, kind) {
+  const inp = document.createElement("div"); inp.className = "field-input";
+  const val = state.filterValues[filter.code];
+  const renderChip = () => {
+    inp.innerHTML = "";
+    if (val) {
+      const label = val.label || val;
+      const chip = document.createElement("span"); chip.className = "chip";
+      chip.innerHTML = label + ` <span class="x" title="清除">×</span>`;
+      chip.querySelector(".x").onclick = e => { e.stopPropagation(); state.filterValues[filter.code] = null; renderFilterBar(); };
+      inp.appendChild(chip);
+    } else {
+      const ph = document.createElement("span"); ph.style.color = "var(--muted)"; ph.textContent = "选择 " + filter.label + " …";
+      inp.appendChild(ph);
+    }
+    const car = document.createElement("span"); car.textContent = " ▾"; car.style.color = "var(--muted)";
+    inp.appendChild(car);
+  };
+  renderChip();
+  inp.onclick = (e) => openDropdownPopup(filter, kind, e.currentTarget);
+  return inp;
+}
+function renderTable() {
+  const cfgCols = state.config.columns[state.view];
+  state.cols = mergeColumns(cfgCols, USER_PREFS[state.view]);
+  const visible = state.cols.filter(c => c._visible);
+  const table = document.getElementById("table");
+  table.innerHTML = "";
+  // thead
+  const thead = document.createElement("thead"); const tr = document.createElement("tr");
+  for (const c of visible) {
+    const th = document.createElement("th");
+    th.textContent = c.label;
+    if (c._pinned === "left") th.classList.add("pin-left");
+    if (c._pinned === "right") th.classList.add("pin-right");
+    if (c.sortable) {
+      th.classList.add("sortable");
+      const arr = document.createElement("span"); arr.className = "sort";
+      if (state.sort?.field === c.code) {
+        th.classList.add("sorted");
+        arr.textContent = state.sort.dir === "asc" ? "▲" : "▼";
+      } else { arr.textContent = "↕"; }
+      th.appendChild(arr);
+      th.onclick = () => {
+        if (state.sort?.field === c.code) {
+          if (state.sort.dir === "asc") state.sort.dir = "desc";
+          else state.sort = null;
+        } else state.sort = { field: c.code, dir: "asc" };
+        refresh();
+      };
+    }
+    tr.appendChild(th);
+  }
+  thead.appendChild(tr); table.appendChild(thead);
+  // tbody
+  const tbody = document.createElement("tbody");
+  for (const r of state.rows) {
+    const trr = document.createElement("tr");
+    for (const c of visible) {
+      const td = document.createElement("td");
+      let val = r[c.code];
+      if (c.code === "region_code" && r.region_label) val = `${r.region_label} (${val})`;
+      const o = fmt(val, c.display);
+      td.className = o.cls + (c._pinned==="left"?" pin-left":"") + (c._pinned==="right"?" pin-right":"");
+      td.textContent = o.text;
+      // 审计徽章
+      if (r._audit && r._audit[c.code]) {
+        const a = r._audit[c.code].find(x => x.valid);
+        if (a) {
+          const b = document.createElement("span");
+          b.className = "src-badge src-" + a.source;
+          b.textContent = a.source + " v" + a.vno;
+          b.style.cursor = "pointer";
+          b.title = "点击查看溯源 / 版本";
+          b.onclick = (e) => { e.stopPropagation(); showAudit(r, c, e); };
+          td.appendChild(document.createTextNode(" "));
+          td.appendChild(b);
+        }
+      }
+      trr.appendChild(td);
+    }
+    tbody.appendChild(trr);
+  }
+  table.appendChild(tbody);
+  // 合计 / 分页 / row meta
+  document.getElementById("rowMeta").textContent =
+    `共 ${state.total} 行 · 当前页 ${state.rows.length} 行` +
+    (state.totals ? ` · GMV合计 ¥${state.totals.gmv.toLocaleString("zh-CN",{maximumFractionDigits:0})}` : "");
+  renderPagination();
+}
+function renderPagination() {
+  const el = document.getElementById("pagination");
+  const totalPages = Math.max(1, Math.ceil(state.total / state.page_size));
+  el.innerHTML = "";
+  const psSel = document.createElement("select");
+  for (const s of [20,50,100,200]) {
+    const o = document.createElement("option"); o.value=s; o.textContent=s+" 行/页"; if (s===state.page_size) o.selected = true;
+    psSel.appendChild(o);
+  }
+  psSel.onchange = () => { state.page_size = +psSel.value; state.page = 1; refresh(); };
+  const prev = document.createElement("button"); prev.className="btn sm"; prev.textContent="‹ 上一页"; prev.disabled = state.page<=1;
+  prev.onclick = () => { state.page--; refresh(); };
+  const next = document.createElement("button"); next.className="btn sm"; next.textContent="下一页 ›"; next.disabled = state.page>=totalPages;
+  next.onclick = () => { state.page++; refresh(); };
+  const info = document.createElement("span"); info.textContent = `第 ${state.page} / ${totalPages} 页`;
+  el.append(psSel, document.createElement("span"), prev, info, next);
+  el.querySelectorAll("span")[0].className = "spacer";
+}
+
+/* =====================================================================
+   Dropdown popup (covers hierarchy + search; same widget, different mode)
+   ===================================================================== */
+let popupEl = null;
+function closePopup(){ if (popupEl) { popupEl.remove(); popupEl = null; } }
+document.addEventListener("click", (e) => {
+  if (popupEl && !popupEl.contains(e.target) && !e.target.closest(".field-input")) closePopup();
+});
+function openDropdownPopup(filter, kind, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div");
+  popupEl.className = "popup";
+  popupEl.style.left = rect.left + "px";
+  popupEl.style.top  = (rect.bottom + 4) + "px";
+  popupEl.style.minWidth = Math.max(280, rect.width) + "px";
+
+  const src = filter.source;
+  const stateP = {
+    q: "",
+    sort: (src.default_sort ?? []).map(s => `${s.field}:${s.dir}`).join(","),
+    only_favorites: false,
+    expanded: {},        // for hierarchy
+    page: 1,
+    items: [],
+    has_more: false,
+    parent_chain: kind === "hierarchy" ? [null] : ["any"]
+  };
+
+  const head = document.createElement("div"); head.className = "popup-head";
+  const qIn = document.createElement("input"); qIn.className="q"; qIn.placeholder = (kind==="search"?"搜索产品（名称/编码）…":"搜索区域 / 输入关键字…");
+  head.appendChild(qIn);
+  if (src.supports_favorite || src.sortable_by?.length) {
+    const row = document.createElement("div"); row.className = "row";
+    if (src.supports_favorite) {
+      const lab = document.createElement("label");
+      lab.style.display="inline-flex"; lab.style.alignItems="center"; lab.style.gap="3px";
+      const cb = document.createElement("input"); cb.type="checkbox";
+      cb.onchange = () => { stateP.only_favorites = cb.checked; load(); };
+      lab.append(cb, document.createTextNode("只看收藏 ⭐"));
+      row.appendChild(lab);
+    }
+    if (src.sortable_by?.length) {
+      const lab = document.createElement("span"); lab.style.marginLeft = "auto"; lab.textContent = "排序";
+      const sel = document.createElement("select");
+      const opts = [];
+      if (src.supports_favorite) opts.push(["is_favorite:desc,label:asc","收藏优先"]);
+      for (const f of src.sortable_by) {
+        if (f === "is_favorite") continue;
+        opts.push([`${f}:asc`, `${f} ↑`]);
+        opts.push([`${f}:desc`,`${f} ↓`]);
+      }
+      for (const [v,t] of opts) {
+        const o = document.createElement("option"); o.value=v; o.textContent=t;
+        if (v === stateP.sort) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.onchange = () => { stateP.sort = sel.value; load(); };
+      row.append(lab, sel);
+    }
+    head.appendChild(row);
+  }
+  popupEl.appendChild(head);
+
+  const body = document.createElement("div"); body.className = "popup-body";
+  popupEl.appendChild(body);
+
+  const foot = document.createElement("div"); foot.className = "popup-foot";
+  popupEl.appendChild(foot);
+
+  document.body.appendChild(popupEl);
+  qIn.focus();
+
+  let qTimer = 0;
+  qIn.oninput = () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { stateP.q = qIn.value; stateP.page = 1; stateP.expanded = {}; load(); }, 200);
+  };
+
+  async function load() {
+    body.innerHTML = "<div style='padding:14px;color:var(--muted);'>加载中…</div>";
+    foot.innerHTML = "";
+
+    if (kind === "hierarchy") {
+      // 渲染整棵被展开的树
+      const tree = await loadTree(filter, stateP);
+      body.innerHTML = "";
+      for (const n of tree) body.appendChild(renderHierarchyNode(filter, n, stateP));
+    } else {
+      // 平铺分页
+      const params = baseParams(filter, stateP); params.page = stateP.page;
+      const r = await api(src.endpoint, params);
+      stateP.items = r.items; stateP.has_more = r.has_more;
+      body.innerHTML = "";
+      for (const it of r.items) body.appendChild(renderFlatOption(filter, it, stateP));
+      if (r.has_more) {
+        const m = document.createElement("div"); m.className = "popup-foot";
+        m.innerHTML = `<span>第 ${r.page} 页 · 共 ${r.total}</span> <span class="spacer" style="flex:1;"></span> <span class="more">加载更多 ↓</span>`;
+        m.querySelector(".more").onclick = async () => {
+          stateP.page++;
+          const more = await api(src.endpoint, {...params, page: stateP.page});
+          stateP.has_more = more.has_more;
+          for (const it of more.items) body.insertBefore(renderFlatOption(filter, it, stateP), m);
+          if (!more.has_more) m.remove();
+          else m.querySelector("span").textContent = `第 ${more.page} 页 · 共 ${more.total}`;
+        };
+        body.appendChild(m);
+      }
+    }
+  }
+  load();
+}
+function baseParams(filter, stateP) {
+  const p = { sort: stateP.sort, only_favorites: stateP.only_favorites?1:0, page_size: filter.source.paging.page_size };
+  if (stateP.q) p.q = stateP.q;
+  // 依赖字段注入
+  filter.depends_on?.forEach(dep => {
+    const v = state.filterValues[dep];
+    if (v) p[dep === "region" ? "region_code" : dep] = (v.value || v);
+  });
+  return p;
+}
+async function loadTree(filter, stateP) {
+  // 顶层一次拉，被展开的节点拉子级
+  const top = await api(filter.source.endpoint, {...baseParams(filter, stateP), parent: null});
+  const nodes = top.items.map(it => ({...it, depth:0}));
+  async function expand(parent, depth) {
+    const r = await api(filter.source.endpoint, {...baseParams(filter, stateP), parent: parent.value});
+    return r.items.map(it => ({...it, depth}));
+  }
+  // 递归处理 stateP.expanded
+  const out = [];
+  async function walk(items) {
+    for (const it of items) {
+      out.push(it);
+      if (stateP.expanded[it.value]) {
+        const kids = await expand(it, it.depth+1);
+        await walk(kids);
+      }
+    }
+  }
+  await walk(nodes);
+  return out;
+}
+function renderHierarchyNode(filter, node, stateP) {
+  const row = document.createElement("div"); row.className = "opt";
+  if (state.filterValues[filter.code]?.value === node.value) row.classList.add("sel");
+  const indent = document.createElement("span"); indent.className="indent"; indent.style.width = (node.depth*14) + "px";
+  row.appendChild(indent);
+  const caret = document.createElement("span"); caret.className="caret"; caret.style.width="14px"; caret.style.display="inline-block";
+  caret.textContent = node.has_children ? (stateP.expanded[node.value] ? "▾" : "▸") : " ";
+  caret.onclick = (e) => {
+    if (!node.has_children) return;
+    e.stopPropagation();
+    stateP.expanded[node.value] = !stateP.expanded[node.value];
+    // 重新加载视图
+    const wrap = row.parentElement;
+    wrap.innerHTML = "<div style='padding:8px;color:var(--muted);'>加载中…</div>";
+    loadTree(filter, stateP).then(tree => {
+      wrap.innerHTML = "";
+      for (const n of tree) wrap.appendChild(renderHierarchyNode(filter, n, stateP));
+    });
+  };
+  row.appendChild(caret);
+  const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = node.label;
+  row.appendChild(lbl);
+  if (node.usage_count != null) {
+    const m = document.createElement("span"); m.className="meta"; m.textContent = "用量 " + node.usage_count;
+    row.appendChild(m);
+  }
+  if (filter.source.supports_favorite) {
+    const s = document.createElement("span"); s.className = "star" + (node.is_favorite?" on":"");
+    s.textContent = "⭐";
+    s.onclick = async (e) => {
+      e.stopPropagation();
+      await api(`/api/users/me/favorites/${filter.source.endpoint.split("/").pop()}`,
+                {option_value: node.value, favorited: !node.is_favorite});
+      node.is_favorite = !node.is_favorite; s.classList.toggle("on", node.is_favorite);
+      toast(node.is_favorite ? "已收藏 " + node.label : "取消收藏 " + node.label);
+    };
+    row.appendChild(s);
+  }
+  row.onclick = (e) => {
+    if (e.target.closest(".caret") || e.target.closest(".star")) return;
+    state.filterValues[filter.code] = { value: node.value, label: node.label };
+    // 清依赖
+    for (const f of state.config.filters) if (f.depends_on?.includes(filter.code)) state.filterValues[f.code] = null;
+    closePopup(); renderFilterBar();
+  };
+  return row;
+}
+function renderFlatOption(filter, item, stateP) {
+  const row = document.createElement("div"); row.className = "opt";
+  if (state.filterValues[filter.code]?.value === item.value) row.classList.add("sel");
+  const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = item.label;
+  row.appendChild(lbl);
+  if (item.sales_rank != null) {
+    const m = document.createElement("span"); m.className="meta"; m.textContent = "热销 #" + item.sales_rank;
+    row.appendChild(m);
+  }
+  if (filter.source.supports_favorite) {
+    const s = document.createElement("span"); s.className = "star" + (item.is_favorite?" on":"");
+    s.textContent = "⭐";
+    s.onclick = async (e) => {
+      e.stopPropagation();
+      await api(`/api/users/me/favorites/${filter.source.endpoint.split("/").pop()}`,
+                {option_value: item.value, favorited: !item.is_favorite});
+      item.is_favorite = !item.is_favorite; s.classList.toggle("on", item.is_favorite);
+      toast(item.is_favorite ? "已收藏 " + item.label : "取消收藏 " + item.label);
+    };
+    row.appendChild(s);
+  }
+  row.onclick = (e) => {
+    if (e.target.closest(".star")) return;
+    state.filterValues[filter.code] = { value: item.value, label: item.label };
+    closePopup(); renderFilterBar();
+  };
+  return row;
+}
+
+/* =====================================================================
+   Audit popup (来源 / 版本 / valid)
+   ===================================================================== */
+let auditEl = null;
+function showAudit(row, col, ev) {
+  if (auditEl) auditEl.remove();
+  auditEl = document.createElement("div"); auditEl.className = "audit-pop";
+  const rect = ev.target.getBoundingClientRect();
+  auditEl.style.left = (rect.left - 100) + "px";
+  auditEl.style.top  = (rect.bottom + 6)  + "px";
+  const audit = row._audit?.[col.code] ?? [];
+  auditEl.innerHTML = `<h4>${col.label} · 来源版本</h4><ul></ul>
+    <div style="margin-top:8px;color:var(--muted);">
+      <strong>合并规则</strong>: latest_valid · 来源优先级 [crm > erp > wms]<br/>
+      <em>点击右上角设置可改 source_mark。</em>
+    </div>`;
+  const ul = auditEl.querySelector("ul");
+  for (const a of audit) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="src-badge src-${a.source}">${a.source}</span>
+                    <span class="ver">v${a.vno}</span>
+                    <span class="spacer" style="flex:1;"></span>
+                    <span class="${a.valid?'ok':'bad'}">${a.valid?'valid':'invalid'}</span>`;
+    ul.appendChild(li);
+  }
+  document.body.appendChild(auditEl);
+  setTimeout(() => document.addEventListener("click", _hide), 0);
+  function _hide(e) {
+    if (auditEl && !auditEl.contains(e.target)) { auditEl.remove(); auditEl = null; document.removeEventListener("click", _hide); }
+  }
+}
+
+/* =====================================================================
+   Column drawer
+   ===================================================================== */
+function openDrawer() {
+  const cfgCols = state.config.columns[state.view];
+  const working = mergeColumns(cfgCols, USER_PREFS[state.view]).map(c => ({...c}));
+  const body = document.getElementById("drawerBody");
+  body.innerHTML = "";
+  // 按 group 分组
+  const groups = {};
+  for (const c of working) {
+    const g = c.group || "其它";
+    (groups[g] = groups[g] || []).push(c);
+  }
+  for (const g of Object.keys(groups)) {
+    const grp = document.createElement("div"); grp.className = "group";
+    const head = document.createElement("div"); head.className = "group-head";
+    head.innerHTML = `<span class="ic">▾</span><span>${g}</span><span class="ct">${groups[g].filter(c=>c._visible).length} / ${groups[g].length}</span>`;
+    grp.appendChild(head);
+    for (const c of groups[g]) grp.appendChild(renderColRow(c, working));
+    body.appendChild(grp);
+  }
+  document.getElementById("chkSaveDefault").checked = false;
+  document.getElementById("drawerMask").classList.add("show");
+  document.getElementById("drawer").classList.add("show");
+  document.getElementById("drawer").setAttribute("aria-hidden","false");
+  document.getElementById("btnDrawerApply").onclick = async () => {
+    const items = working.map(c => ({
+      field_code: c.code, is_visible: c._visible, order_idx: c._order, width: c._width, pinned: c._pinned
+    }));
+    if (document.getElementById("chkSaveDefault").checked) {
+      await api(`/api/users/me/columns/daily_sales`, {__method:"PUT", view: state.view, items});
+      toast("已保存为我的默认");
+    } else {
+      USER_PREFS[state.view] = items;  // 本次会话生效
+      toast("已应用本次会话");
+    }
+    closeDrawer(); renderTable();
+  };
+  document.getElementById("btnRestoreDefault").onclick = async () => {
+    await api(`/api/users/me/columns/daily_sales`, {__method:"DELETE", view: state.view});
+    toast("已恢复后端默认");
+    closeDrawer(); renderTable();
+  };
+}
+function renderColRow(c, all) {
+  const row = document.createElement("div"); row.className = "col-row";
+  const cb = document.createElement("input"); cb.type="checkbox"; cb.checked = c._visible;
+  cb.onchange = () => { c._visible = cb.checked; };
+  const grip = document.createElement("span"); grip.className = "grip"; grip.textContent = "⠿";
+  const lbl = document.createElement("span"); lbl.className = "lbl" + (c._visible?"":" dim"); lbl.textContent = c.label;
+  const ord = document.createElement("span"); ord.className = "ord-btns";
+  const up = document.createElement("button"); up.textContent = "▲"; up.title="上移";
+  const dn = document.createElement("button"); dn.textContent = "▼"; dn.title="下移";
+  function move(d) {
+    const idx = all.indexOf(c); const tgt = idx + d;
+    if (tgt < 0 || tgt >= all.length) return;
+    const other = all[tgt];
+    const tmp = c._order; c._order = other._order; other._order = tmp;
+    all.sort((a,b)=>a._order-b._order);
+    openDrawer();
+  }
+  up.onclick = () => move(-1); dn.onclick = () => move(1);
+  ord.append(up, dn);
+  const pin = document.createElement("span"); pin.className = "pin" + (c._pinned!=="none"?" on":""); pin.textContent = c._pinned==="left"?"📌左":c._pinned==="right"?"📌右":"📌";
+  pin.title = "固定列 (none → left → right → none)";
+  pin.onclick = () => {
+    c._pinned = c._pinned==="none" ? "left" : c._pinned==="left" ? "right" : "none";
+    pin.textContent = c._pinned==="left"?"📌左":c._pinned==="right"?"📌右":"📌";
+    pin.classList.toggle("on", c._pinned!=="none");
+  };
+  row.append(cb, grip, lbl, ord, pin); return row;
+}
+function closeDrawer() {
+  document.getElementById("drawerMask").classList.remove("show");
+  document.getElementById("drawer").classList.remove("show");
+  document.getElementById("drawer").setAttribute("aria-hidden","true");
+}
+
+/* =====================================================================
+   Toast
+   ===================================================================== */
+let toastT = 0;
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 1600);
+}
+
+/* =====================================================================
+   Refresh entry —— 拉数据并重渲染
+   ===================================================================== */
+async function refresh() {
+  const tab = state.config.tabs.find(t => t.code === state.view);
+  const params = buildParams(state.config.filters, state.filterValues);
+  params.page = state.page; params.page_size = state.page_size;
+  if (state.sort) params.sort = `${state.sort.field}:${state.sort.dir}`;
+  const r = await api(tab.endpoint, params);
+  state.rows = r.items; state.total = r.total; state.totals = r.extras?.totals ?? null;
+  renderTabs(); renderTable();
+}
+
+/* =====================================================================
+   Bootstrap
+   ===================================================================== */
+(async function init() {
+  state.config = MOCK_CONFIG;
+  for (const f of state.config.filters) if (f.default) state.filterValues[f.code] = {...f.default};
+  state.page_size = state.config.tabs[0].paging.default_page_size;
+  renderTitle(); renderFilterBar(); renderTabs(); await refresh();
+
+  document.getElementById("btnCols").onclick = openDrawer;
+  document.getElementById("btnDrawerClose").onclick = closeDrawer;
+  document.getElementById("btnDrawerCancel").onclick = closeDrawer;
+  document.getElementById("drawerMask").onclick = closeDrawer;
+  document.getElementById("btnFlow").onclick = () => toast("管理员视图（占位）：在事实表单元格点 [crm v3] 徽章可看版本与有效性。");
+})();
+</script>
+</body>
+</html>
