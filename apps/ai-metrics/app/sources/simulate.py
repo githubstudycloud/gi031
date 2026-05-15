@@ -1,19 +1,25 @@
-"""模拟数据源 → 入表
+"""模拟数据源 → 入表（**详情先行，metric_value = SUM(detail)**）。
 
-真实场景每个来源会被一个独立 cron / generation-service worker 拉取：
-  - Jira          → 需求数 + AI 需求数
-  - TestRail      → 用例数 + AI 用例数 + AI 用例采纳数
-  - Gitlab MR     → 代码行数 + AI 行数 + 新脚本数 + 新脚本 AI 辅助数
-  - SonarQube     → AI 代码准确率分子（无 bug 行数）
+V3 一致性保证：
+- 每个 (date, src, proj, domain) 组合先生成 detail 记录
+- metric_value 直接由 detail rows COUNT 或 SUM 推导
+- 例：req_count = COUNT(detail WHERE detail_type='requirement')
+      ai_code_lines = SUM(detail.payload.lines WHERE is_ai AND detail_type='code_change')
+- 因此 summary 数字 ≡ drilldown 实际行数 ≡ 业务真相
 
-V1 模拟器：对所有 (项目, 领域, 日期) 组合按规则生成，写入 ai_metric (source=<src>)。
-upsert 语义复用 /api/metrics/ingest 的事务。
-重复跑同一 (date, project, domain, metric, source) → 更新 metric_value（幂等）。
+来源分工：
+  jira     → requirement details      → req_count / ai_req_count
+  testrail → case details             → new_case_count / ai_case_count / ai_case_adopted
+  gitlab   → code_change + script_file → total_code_lines / ai_code_lines /
+                                          new_script_count / new_script_ai_assisted_count
+  sonar    → code_review details (审计 AI PR) → ai_code_accurate_lines
+
+每次 simulate 对 (date, src) 自动 +1 version_no；多版本可在版本管理界面切换。
 
 用法：
-    python -m app.sources.simulate --source jira --days 1
-    python -m app.sources.simulate --source all  --days 7
-    python -m app.sources.simulate --source all  --backfill 30 --reset
+    python -m app.sources.simulate --source all --days 7
+    python -m app.sources.simulate --source all --days 30 --runs-per-day 2
+    python -m app.sources.simulate --reset
 """
 from __future__ import annotations
 import argparse
@@ -26,43 +32,27 @@ from app.db import SessionLocal, init_db
 from app.models import AiMetric, AiMetricDetail, DimProject, DimDomain
 
 
-# 每个来源负责的"原子"指标 + 大致量级
+# ─── source 元数据 ─────────────────────────────────────────────
 SOURCES = {
-    "jira": {
-        "label": "Jira",
-        "metrics": {
-            "req_count":     (3, 18),
-            "ai_req_count":  (0, 12),  # 受 req_count 上界约束（生成时再截断）
-        },
-    },
-    "testrail": {
-        "label": "TestRail",
-        "metrics": {
-            "new_case_count":  (10, 50),
-            "ai_case_count":   (3, 35),
-            "ai_case_adopted": (0, 30),
-        },
-    },
-    "gitlab": {
-        "label": "Gitlab MR",
-        "metrics": {
-            "total_code_lines":          (200, 1200),
-            "ai_code_lines":             (50, 800),
-            "new_script_count":          (1, 8),
-            "new_script_ai_assisted_count": (0, 6),
-        },
-    },
-    "sonar": {
-        "label": "SonarQube",
-        "metrics": {
-            "ai_code_accurate_lines": (40, 750),
-        },
-    },
+    "jira":     {"label": "Jira",      "owns": ["requirement"]},
+    "testrail": {"label": "TestRail",  "owns": ["case"]},
+    "gitlab":   {"label": "Gitlab MR", "owns": ["code_change", "script_file"]},
+    "sonar":    {"label": "SonarQube", "owns": ["code_review"]},
 }
+
+# 不同 detail_type 的状态值 (真实业务路径)
+STATUS_MAP = {
+    "requirement": ["draft", "reviewing", "approved", "in_dev", "done", "rejected"],
+    "case":        ["draft", "executable", "passed", "failed", "blocked"],
+    "code_change": ["open", "review", "merged", "merged", "merged", "closed"],
+    "script_file": ["draft", "merged", "merged", "in_use"],
+    "code_review": ["resolved", "resolved", "false_positive", "pending"],
+}
+
+AUTHORS = ["alice", "bob", "charlie", "dave", "eve", "frank", "grace", "henry"]
 
 
 def _next_version(db, period_date, source):
-    """取该 (date, source) 下一个 version_no（max + 1，从 1 起）。"""
     cur = db.execute(
         select(func.coalesce(func.max(AiMetric.version_no), 0))
         .where(AiMetric.period_date == period_date, AiMetric.source == source)
@@ -70,123 +60,230 @@ def _next_version(db, period_date, source):
     return int(cur or 0) + 1
 
 
-def _insert(db, **row):
-    """每次 simulate 都写入新 version_no，因此不需要 upsert，直接 insert。"""
+def _insert_metric(db, **row):
     db.execute(AiMetric.__table__.insert().values(**row))
 
 
-def simulate_source_day(db, src_key, the_date, projects, domains, detail_per_combo=8):
-    rules = SOURCES[src_key]
-    version_no = _next_version(db, the_date, src_key)
-    inserted = skipped = 0
-    detail_seq = 0
+def _mk_detail(*, the_date, proj, dom, src, ver, metric_code, detail_type,
+               is_ai, status, payload, severity=None, author=None, is_adopted=None,
+               ref_id=None, ref_label=None, ref_url=None):
+    return AiMetricDetail(
+        period_date=the_date, project_code=proj, domain_code=dom,
+        metric_code=metric_code, detail_type=detail_type,
+        source=src, version_no=ver,
+        ref_id=ref_id or f"{src.upper()}-{detail_type[:3].upper()}-{the_date.strftime('%m%d')}-{ver}-{random.randint(1000,9999)}",
+        ref_label=ref_label or f"[{SOURCES[src]['label']}] {detail_type} v{ver}",
+        ref_url=ref_url or f"https://{src}.example.com/{detail_type}/{random.randint(10000,99999)}",
+        is_ai_generated=is_ai, is_adopted=is_adopted,
+        severity=severity, author=author or random.choice(AUTHORS), status=status,
+        payload=payload,
+    )
+
+
+# ─── 各 source 的"详情→指标"生成器 ────────────────────────────
+
+def gen_jira(db, the_date, proj, dom, src, ver):
+    """需求：写 N 条 requirement 详情；req_count = N；ai_req_count = N_ai
+
+    每条详情用 canonical metric_code='req_count' (总集)。
+    drilldown 按 (detail_type='requirement', is_ai 过滤可选) 二级映射决定可见集。"""
+    n_total = random.randint(5, 18)
+    n_ai = 0
+    for i in range(n_total):
+        is_ai = random.random() < 0.55
+        if is_ai: n_ai += 1
+        db.add(_mk_detail(
+            the_date=the_date, proj=proj, dom=dom, src=src, ver=ver,
+            metric_code="req_count",     # canonical
+            detail_type="requirement",
+            is_ai=is_ai,
+            status=random.choice(STATUS_MAP["requirement"]),
+            severity=random.choice(["high","medium","low","low","low"]),
+            payload={
+                "complexity": random.choice(["s","m","l","xl"]),
+                "story_points": random.choice([1, 2, 3, 5, 8, 13]),
+                "version": ver,
+            },
+            ref_label=f"[Jira] {'AI ' if is_ai else ''}需求 {dom}-{i+1} v{ver}",
+        ))
+    return {"req_count": n_total, "ai_req_count": n_ai}
+
+
+def gen_testrail(db, the_date, proj, dom, src, ver):
+    """用例：写 N 条 case 详情；new_case_count=N；ai_case_count=N_ai；ai_case_adopted=N_adopted_ai"""
+    n_total = random.randint(15, 50)
+    n_ai = 0; n_adopted = 0
+    for i in range(n_total):
+        is_ai = random.random() < 0.55
+        is_adopted = None
+        if is_ai:
+            n_ai += 1
+            is_adopted = random.random() < 0.65
+            if is_adopted: n_adopted += 1
+        db.add(_mk_detail(
+            the_date=the_date, proj=proj, dom=dom, src=src, ver=ver,
+            metric_code="new_case_count",   # canonical
+            detail_type="case",
+            is_ai=is_ai, is_adopted=is_adopted,
+            status=random.choice(STATUS_MAP["case"]),
+            severity=random.choice(["high","medium","low","low","low"]),
+            payload={
+                "steps": random.randint(3, 15),
+                "last_run": random.choice(["passed","failed","skipped",None]),
+                "version": ver,
+            },
+            ref_label=f"[TestRail] {'AI ' if is_ai else ''}用例 {dom}-{i+1} v{ver}",
+        ))
+    return {"new_case_count": n_total, "ai_case_count": n_ai, "ai_case_adopted": n_adopted}
+
+
+def gen_gitlab(db, the_date, proj, dom, src, ver):
+    """PR 详情 → total_code_lines/ai_code_lines (按 lines SUM)。
+    脚本 详情 → new_script_count/new_script_ai_assisted_count (按数量)。"""
+    # PRs
+    n_prs = random.randint(2, 10)
+    total_lines = 0; ai_lines = 0
+    for i in range(n_prs):
+        is_ai = random.random() < 0.5
+        lines = random.randint(30, 350)
+        total_lines += lines
+        if is_ai: ai_lines += lines
+        db.add(_mk_detail(
+            the_date=the_date, proj=proj, dom=dom, src=src, ver=ver,
+            metric_code="total_code_lines",  # canonical
+            detail_type="code_change",
+            is_ai=is_ai,
+            status=random.choice(STATUS_MAP["code_change"]),
+            payload={
+                "lines": lines,
+                "files": random.randint(1, 8),
+                "lang": random.choice(["python","typescript","go","java"]),
+                "version": ver,
+            },
+            ref_label=f"[Gitlab MR] {'AI ' if is_ai else ''}PR {dom}-{i+1} (+{lines} 行) v{ver}",
+        ))
+    # Scripts
+    n_scripts = random.randint(1, 8)
+    n_ai_scripts = 0
+    for i in range(n_scripts):
+        is_ai = random.random() < 0.45
+        if is_ai: n_ai_scripts += 1
+        db.add(_mk_detail(
+            the_date=the_date, proj=proj, dom=dom, src=src, ver=ver,
+            metric_code="new_script_count",   # canonical
+            detail_type="script_file",
+            is_ai=is_ai,
+            status=random.choice(STATUS_MAP["script_file"]),
+            payload={"loc": random.randint(20, 400), "version": ver},
+            ref_label=f"[Gitlab] {'AI 辅助 ' if is_ai else ''}脚本 {dom}-{i+1} v{ver}",
+        ))
+    return {
+        "total_code_lines": total_lines, "ai_code_lines": ai_lines,
+        "new_script_count": n_scripts, "new_script_ai_assisted_count": n_ai_scripts,
+    }
+
+
+def gen_sonar(db, the_date, proj, dom, src, ver, ai_lines_hint=0):
+    """SonarQube code_review 详情：每条 review 一段 AI 代码，accurate=true/false 决定是否计入准确行数。
+    ai_code_accurate_lines = SUM(reviewed_lines where accurate)。
+    ai_lines_hint 来自 gitlab 同 (date, proj, dom) 的 ai_code_lines，sonar review 不超过它。
+    """
+    if ai_lines_hint <= 0:
+        return {}
+    # 切成 N 个 review，每个 review 覆盖一段
+    n_reviews = random.randint(2, 6)
+    accurate_total = 0
+    remaining = ai_lines_hint
+    for i in range(n_reviews):
+        if remaining <= 0: break
+        chunk = random.randint(max(10, remaining // (n_reviews - i + 1) // 2),
+                               max(20, remaining // (n_reviews - i + 1) * 2))
+        chunk = min(chunk, remaining)
+        is_accurate = random.random() < 0.88
+        if is_accurate:
+            accurate_total += chunk
+        db.add(_mk_detail(
+            the_date=the_date, proj=proj, dom=dom, src=src, ver=ver,
+            metric_code="ai_code_accurate_lines",
+            detail_type="code_review",
+            is_ai=True,
+            status=random.choice(STATUS_MAP["code_review"]),
+            severity=None if is_accurate else random.choice(["high","medium","low"]),
+            payload={
+                "reviewed_lines": chunk,
+                "accurate": is_accurate,
+                "rule": random.choice(["python:S1192","ts:S125","java:S2589","go:S1006"]),
+                "version": ver,
+            },
+            ref_label=f"[Sonar] AI 段审计 {dom}-{i+1} ({chunk}行 {'✓' if is_accurate else '×'}) v{ver}",
+        ))
+        remaining -= chunk
+    return {"ai_code_accurate_lines": accurate_total}
+
+
+SOURCE_GENERATORS = {
+    "jira": gen_jira,
+    "testrail": gen_testrail,
+    "gitlab": gen_gitlab,
+    "sonar": gen_sonar,
+}
+
+
+def simulate_source_day(db, src_key, the_date, projects, domains):
+    """对 (date, src) 跑一次，写所有 (proj, domain) 组合的 detail + metric_value。"""
+    ver = _next_version(db, the_date, src_key)
+    inserted_metric = 0
+    detail_count_before = db.execute(
+        select(func.count()).select_from(AiMetricDetail)
+        .where(AiMetricDetail.period_date == the_date,
+               AiMetricDetail.source == src_key,
+               AiMetricDetail.version_no == ver)
+    ).scalar() or 0
+
     for proj in projects:
         for dom in domains:
-            # 计算"原子"指标 —— 保证约束（AI ≤ 总数）
-            vals = {}
-            for m, (lo, hi) in rules["metrics"].items():
-                vals[m] = random.randint(lo, hi)
-            # 约束修正（业务规则）
-            if "ai_req_count" in vals and "req_count" in vals:
-                vals["ai_req_count"] = min(vals["ai_req_count"], vals["req_count"])
-            if "ai_case_count" in vals and "new_case_count" in vals:
-                vals["ai_case_count"] = min(vals["ai_case_count"], vals["new_case_count"])
-            if "ai_case_adopted" in vals and "ai_case_count" in vals:
-                vals["ai_case_adopted"] = min(vals["ai_case_adopted"], vals["ai_case_count"])
-            if "ai_code_lines" in vals and "total_code_lines" in vals:
-                vals["ai_code_lines"] = min(vals["ai_code_lines"], vals["total_code_lines"])
-            if "new_script_ai_assisted_count" in vals and "new_script_count" in vals:
-                vals["new_script_ai_assisted_count"] = min(vals["new_script_ai_assisted_count"], vals["new_script_count"])
-            # sonar 准确行依赖 gitlab 的 ai_code_lines：跨源依赖 → 真实场景里 merger 处理；
-            # 模拟时按经验 0.85~1.0 比例（这里就近假定 ai_code_lines 是 ai_code_accurate_lines * (1/k)）
-            if "ai_code_accurate_lines" in vals:
-                # 限制在合理范围；真实数据应从 gitlab 来源的 ai_code_lines 算
-                pass
+            gen = SOURCE_GENERATORS[src_key]
+            if src_key == "sonar":
+                # sonar 需要本日同组合的 ai_code_lines 作为上限，先查 gitlab 的本版本
+                hint = db.execute(
+                    select(func.coalesce(func.sum(AiMetric.metric_value), 0))
+                    .where(AiMetric.period_date == the_date,
+                           AiMetric.project_code == proj,
+                           AiMetric.domain_code == dom,
+                           AiMetric.metric_code == "ai_code_lines",
+                           AiMetric.source == "gitlab")
+                ).scalar() or 0
+                counts = gen(db, the_date, proj, dom, src_key, ver, ai_lines_hint=int(hint))
+            else:
+                counts = gen(db, the_date, proj, dom, src_key, ver)
 
-            # 偶尔模拟漏报（2%）—— version_no 已固定
-            for m, v in vals.items():
-                if random.random() < 0.02:
-                    skipped += 1
-                    continue
-                _insert(db,
+            for m_code, value in counts.items():
+                _insert_metric(db,
                     period_date=the_date, project_code=proj, domain_code=dom,
                     iteration_code=None, org_path=None,
-                    metric_code=m, metric_value=float(v),
-                    source=src_key, version_no=version_no,
+                    metric_code=m_code, metric_value=float(value),
+                    source=src_key, version_no=ver,
                 )
-                inserted += 1
+                inserted_metric += 1
 
-            # 明细（详情）—— **覆盖全部 7 个 drilldown 指标** + 真实字段（status/priority/files/lines）
-            # 默认 detail_per_combo=8 条 × 7 metric × ≈相关 source × 4 proj × 6 domain ≈ 几百条/天/源
-            DETAIL_SPECS = [
-                # metric_code,        detail_type,    label_tpl,           is_ai
-                ("req_count",         "requirement",  "需求",              False),
-                ("ai_req_count",      "requirement",  "AI 需求",           True ),
-                ("new_case_count",    "case",         "新增用例",          False),
-                ("ai_case_count",     "case",         "AI 用例",           True ),
-                ("ai_code_lines",     "code_change",  "AI 脚本 PR",        True ),
-                ("total_code_lines",  "code_change",  "脚本 PR (总)",      False),
-                ("new_script_count",  "script_file",  "新增测试脚本",      False),
-            ]
-            STATUS_MAP = {
-                "requirement": ["draft", "reviewing", "approved", "in_dev", "done", "rejected"],
-                "case":        ["draft", "executable", "passed", "failed", "blocked"],
-                "code_change": ["open", "review", "merged", "merged", "merged", "closed"],
-                "script_file": ["draft", "merged", "merged", "in_use"],
-            }
-            for m_code, detail_type, label_tpl, is_ai_default in DETAIL_SPECS:
-                if m_code not in vals: continue
-                count = vals[m_code]
-                if count <= 0: continue
-                n = min(detail_per_combo, max(1, int(count) // 3 or 1))
-                for i in range(n):
-                    detail_seq += 1
-                    is_ai = is_ai_default if m_code.startswith("ai_") else (random.random() < 0.35)
-                    # case: 60% AI 采纳；其它没有 is_adopted 语义
-                    is_adopted = None
-                    if detail_type == "case" and is_ai:
-                        is_adopted = random.random() < 0.62
-                    sev = random.choice(["high","high","medium","low","low","low"]) if detail_type in ("case","requirement") else None
-                    author = random.choice(["alice","bob","charlie","dave","eve","frank","grace","henry"])
-                    status = random.choice(STATUS_MAP[detail_type])
-                    extra = {"source": src_key, "version": version_no,
-                             "scrape_at": the_date.isoformat()}
-                    if detail_type == "code_change":
-                        extra["lines"] = random.randint(10, 320)
-                        extra["files"] = random.randint(1, 8)
-                        extra["lang"]  = random.choice(["python","typescript","go","java"])
-                    elif detail_type == "case":
-                        extra["steps"] = random.randint(3, 15)
-                        extra["last_run"] = random.choice(["passed","failed","skipped",None])
-                    elif detail_type == "requirement":
-                        extra["complexity"] = random.choice(["s","m","l","xl"])
-                        extra["story_points"] = random.choice([1, 2, 3, 5, 8, 13])
-                    elif detail_type == "script_file":
-                        extra["loc"] = random.randint(20, 400)
-                    db.add(AiMetricDetail(
-                        period_date=the_date, project_code=proj, domain_code=dom,
-                        metric_code=m_code, detail_type=detail_type,
-                        source=src_key, version_no=version_no,
-                        ref_id=f"{src_key.upper()}-{detail_type[:3].upper()}-{proj[-1].upper()}{dom[0].upper()}-{the_date.strftime('%m%d')}-{version_no}{i:03d}",
-                        ref_label=f"[{rules['label']}] {label_tpl} {dom}/{i+1} v{version_no} [{status}]",
-                        ref_url=f"https://{src_key}.example.com/{detail_type}/{detail_seq}",
-                        is_ai_generated=is_ai,
-                        is_adopted=is_adopted,
-                        severity=sev,
-                        author=author,
-                        status=status,
-                        payload=extra,
-                    ))
-    return inserted, skipped, version_no
+    db.commit()
+    detail_count_after = db.execute(
+        select(func.count()).select_from(AiMetricDetail)
+        .where(AiMetricDetail.period_date == the_date,
+               AiMetricDetail.source == src_key,
+               AiMetricDetail.version_no == ver)
+    ).scalar() or 0
+    return inserted_metric, detail_count_after - detail_count_before, ver
 
 
-def run(src_keys, days_back, reset=False, runs_per_day=1, detail_per_combo=8):
-    """对每个 (src, day) 组合跑 runs_per_day 次，version_no 自动 +1。
-
-    runs_per_day=1 表示每个 day 每 source 只产生 1 个版本（默认）
-    runs_per_day=3 表示每天每 source 跑 3 次（模拟早中晚各拉一次） → version_no=1,2,3
-    """
+def run(src_keys, days_back, reset=False, runs_per_day=1):
+    """跑所有指定来源 × N 天 × M 次。注意：sonar 依赖 gitlab 同组合 metric，
+    所以 source 顺序固定为 jira → testrail → gitlab → sonar。"""
     init_db()
+    # 强制顺序：sonar 最后跑（依赖 gitlab 的 ai_code_lines）
+    order = ["jira", "testrail", "gitlab", "sonar"]
+    src_keys = [s for s in order if s in src_keys]
+
     with SessionLocal() as db:
         projects = [p.code for p in db.execute(select(DimProject)).scalars().all()]
         domains  = [d.code for d in db.execute(select(DimDomain)).scalars().all()]
@@ -203,21 +300,19 @@ def run(src_keys, days_back, reset=False, runs_per_day=1, detail_per_combo=8):
         today = date.today()
         for d_off in range(days_back):
             the_date = today - timedelta(days=d_off)
-            for sk in src_keys:
-                for run_idx in range(runs_per_day):
-                    ins, skp, ver = simulate_source_day(db, sk, the_date, projects, domains, detail_per_combo)
-                    db.commit()
-                    print(f"  {the_date}  [{sk:>9}] v{ver}  +{ins} ins  {skp} skip")
+            for run_idx in range(runs_per_day):
+                for sk in src_keys:
+                    ins, det, ver = simulate_source_day(db, sk, the_date, projects, domains)
+                    print(f"  {the_date}  [{sk:>9}] v{ver}  metric+{ins:>3}  detail+{det:>4}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="all", help="all | jira | testrail | gitlab | sonar | comma-list")
-    ap.add_argument("--days", type=int, default=1, help="模拟最近 N 天")
-    ap.add_argument("--backfill", type=int, default=None, help="历史回填天数（覆盖 --days）")
-    ap.add_argument("--runs-per-day", type=int, default=1, help="每天每来源跑几次（多版本演示）")
-    ap.add_argument("--detail-per-combo", type=int, default=8, help="每个 (ai_metric × proj × domain) 写多少条 detail")
-    ap.add_argument("--reset", action="store_true", help="先删除对应来源的事实再灌")
+    ap.add_argument("--days", type=int, default=1)
+    ap.add_argument("--backfill", type=int, default=None)
+    ap.add_argument("--runs-per-day", type=int, default=1)
+    ap.add_argument("--reset", action="store_true")
     args = ap.parse_args()
 
     days = args.backfill or args.days
@@ -225,8 +320,8 @@ def main():
     for k in keys:
         if k not in SOURCES:
             raise SystemExit(f"unknown source: {k}; available: {list(SOURCES.keys())}")
-    print(f"== simulate sources={keys} days={days} runs/day={args.runs_per_day} detail/combo={args.detail_per_combo} reset={args.reset}")
-    run(keys, days, args.reset, args.runs_per_day, args.detail_per_combo)
+    print(f"== simulate (detail-first, metric=SUM detail) sources={keys} days={days} runs/day={args.runs_per_day} reset={args.reset}")
+    run(keys, days, args.reset, args.runs_per_day)
 
 
 if __name__ == "__main__":

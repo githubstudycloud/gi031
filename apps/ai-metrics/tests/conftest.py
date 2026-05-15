@@ -18,17 +18,15 @@ def _isolate_db():
 
 @pytest.fixture(scope="session")
 def seeded_db(_isolate_db):
-    """构建表 + dim/metric_def seed + 3 天 seed facts (v1) + 4 源 × 1 天 × 2 版本 simulate。"""
+    """构建表 + dim/metric_def seed + 4 源 × 2 天 × 2 版本 simulate (detail-first)。"""
     from app.db import init_db, SessionLocal
-    from app.seed.fake_data import seed_dimensions, seed_facts
+    from app.seed.fake_data import seed_dimensions
     from app.sources.simulate import run as simulate_run
     init_db()
     with SessionLocal() as db:
         seed_dimensions(db)
-        seed_facts(db, 3)   # source='seed', v1
-    # 4 个真来源 × 1 天 × 2 版本 (v1, v2) + 8 条 detail / metric / proj / domain
-    simulate_run(["jira", "testrail", "gitlab", "sonar"], 1, reset=False,
-                 runs_per_day=2, detail_per_combo=6)
+    # 4 个来源 × 2 天 × 2 版本，每条 metric 的 value 都 = SUM(对应 detail)
+    simulate_run(["jira", "testrail", "gitlab", "sonar"], 2, reset=False, runs_per_day=2)
     return True
 
 

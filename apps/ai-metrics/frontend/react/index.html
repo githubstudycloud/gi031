@@ -66,6 +66,8 @@ table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-a
 .ver-row .src{font-weight:500;flex:0 0 70px} .ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
 .ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
 .ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
+.delta{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;vertical-align:middle}
+.delta.up{color:#16a34a} .delta.down{color:#dc2626} .delta.flat{color:var(--muted)}
 .modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:200;display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:10px;width:96%;max-width:1200px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,.4)}
 .modal-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -151,6 +153,7 @@ function App() {
   const [totalsRow, setTotalsRow] = useState(null);
   const [total, setTotal] = useState(0);
   const [validVersions, setValidVersions] = useState({ count: 0, by_date: {} });
+  const [compareWith, setCompareWith] = useState("none");
   const [popup, setPopup] = useState(null);
   const [projOpts, setProjOpts] = useState([]);
   const [projQ, setProjQ] = useState("");
@@ -175,13 +178,26 @@ function App() {
       paging: "server", page, page_size: pageSize,
       sort: sortStr,
       row_filter: rowFilters.length ? rowFilters : null,
+      compare_with: compareWith,
     };
     const r = await api(`/api/reports/ai_metrics/summary`, { method: "POST", body: JSON.stringify(body) });
     setRows(r.data.items);
     setTotalsRow(r.data.extras?.totals_row ?? null);
     setTotal(r.data.total);
     setValidVersions(r.data.extras?.valid_versions ?? { count: 0, by_date: {} });
-  }, [filterValues, rowDim, rowFilters, sort, page, pageSize]);
+  }, [filterValues, rowDim, rowFilters, sort, page, pageSize, compareWith]);
+
+  function openCompare(ev) {
+    const r = ev.target.getBoundingClientRect();
+    setPopup({ kind: "compare", x: r.right - 220, y: r.bottom + 6 });
+  }
+  function pickCompare(code) { setCompareWith(code); setPage(1); setPopup(null); }
+  function deltaFor(r, code) {
+    const v = r?.[`_delta_pct_${code}`];
+    if (v == null || compareWith === "none") return null;
+    const cls = v > 0.01 ? "up" : v < -0.01 ? "down" : "flat";
+    return { cls, text: (cls === "up" ? "▲ " : cls === "down" ? "▼ " : "≈ ") + Math.abs(v).toFixed(1) + "%" };
+  }
 
   useEffect(() => {
     (async () => {
@@ -385,6 +401,7 @@ function App() {
       <span class="sub">config v${config.meta.version} · ${config.meta.report_type}</span>
       <span class="grow"></span>
       <span class="pill" onClick=${openRowDim}>📐 ${rowDimLabel} ▾</span>
+      <span class="pill" onClick=${openCompare}>📊 ${config.primary_view.compare?.options?.find(o => o.code === compareWith)?.label || '不对比'} ▾</span>
       <span class="pill" onClick=${openVersions}>🕒 v: ${validVersions.count} ▾</span>
     </header>
 
@@ -473,11 +490,15 @@ function App() {
                 ${leafCols.map(c => {
                   const f = fmt(fieldDisplayValue(c, r), c.display);
                   const isClick = c.drilldown && c.code !== "domain_code" && c.code !== "project_code" && r[c.code] != null;
+                  const d = (c.code !== "domain_code" && c.code !== "project_code") ? deltaFor(r, c.code) : null;
                   return html`<td key=${c.code} className=${classOf(f.cls,
                     c.default_pinned === "left" && "pin-left",
                     (c.code === "domain_code" || c.code === "project_code") && "dim",
                     isClick && "click")}
-                    onClick=${isClick ? () => openDrilldown(c, r) : null}>${f.text}</td>`;
+                    onClick=${isClick ? () => openDrilldown(c, r) : null}>
+                    ${f.text}
+                    ${d && html` <span className=${"delta " + d.cls}>${d.text}</span>`}
+                  </td>`;
                 })}
               </tr>
             `)}
@@ -487,9 +508,13 @@ function App() {
               ${rowFavEnabled && html`<td className="pin-left fav-col"></td>`}
               ${leafCols.map(c => {
                 const f = fmt(totalsRow[c.code], c.display);
+                const d = (c.code !== "domain_code" && c.code !== "project_code") ? deltaFor(totalsRow, c.code) : null;
                 return html`<td key=${c.code} className=${classOf(f.cls,
                   c.default_pinned === "left" && "pin-left",
-                  (c.code === "domain_code" || c.code === "project_code") && "dim")}>${f.text}</td>`;
+                  (c.code === "domain_code" || c.code === "project_code") && "dim")}>
+                  ${f.text}
+                  ${d && html` <span className=${"delta " + d.cls}>${d.text}</span>`}
+                </td>`;
               })}
             </tr>
           </tfoot>`}
@@ -503,6 +528,15 @@ function App() {
         <div key=${o.code} className=${"opt" + (o.code===rowDim?" sel":"")} onClick=${() => pickRowDim(o.code)}>
           <span style=${{flex:1}}>${o.label}</span>
           <span class="meta">约 ${o.row_count_hint} 行</span>
+        </div>
+      `)}
+    </div>`}
+
+    ${popup?.kind === "compare" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px",minWidth:"220px"}}>
+      <div class="popup-head">同比 / 环比</div>
+      ${(config.primary_view.compare?.options || []).map(o => html`
+        <div key=${o.code} className=${"opt" + (o.code===compareWith?" sel":"")} onClick=${() => pickCompare(o.code)}>
+          <span style=${{flex:1}}>${o.label}</span>
         </div>
       `)}
     </div>`}

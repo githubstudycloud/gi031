@@ -532,6 +532,22 @@ def _build_valid_sq(date_from, date_to):
 # 下钻 (详情)
 # ────────────────────────────────────────────────────────────────────
 
+# metric_code → (canonical detail_type 用于 WHERE，is_ai 过滤可选)
+# 例：用户点 "ai_req_count" → 查 detail_type='requirement' AND is_ai_generated=True
+METRIC_DRILL_MAP: dict[str, dict] = {
+    "req_count":           {"detail_type": "requirement"},                # all
+    "ai_req_count":        {"detail_type": "requirement", "is_ai": True},
+    "new_case_count":      {"detail_type": "case"},
+    "ai_case_count":       {"detail_type": "case", "is_ai": True},
+    "ai_case_adopted":     {"detail_type": "case", "is_ai": True, "adopted": True},
+    "total_code_lines":    {"detail_type": "code_change"},
+    "ai_code_lines":       {"detail_type": "code_change", "is_ai": True},
+    "new_script_count":    {"detail_type": "script_file"},
+    "new_script_ai_assisted_count": {"detail_type": "script_file", "is_ai": True},
+    "ai_code_accurate_lines": {"detail_type": "code_review"},
+}
+
+
 def fetch_drilldown(
     db: Session,
     *,
@@ -544,11 +560,20 @@ def fetch_drilldown(
     sort: str | None = None,
     page: int = 1, page_size: int = 50,
 ) -> dict:
-    """下钻：拉 ai_metric_detail；同样过滤 latest_valid version。"""
-    # latest_valid 子查询（与 summary 一致）
+    """下钻：拉 ai_metric_detail；按 latest_valid 版本过滤；按 metric_code 映射到 detail_type + is_ai 过滤。"""
     valid_sq = _build_valid_sq(date_from, date_to)
 
-    conds = [AiMetricDetail.metric_code == metric_code]
+    drill_spec = METRIC_DRILL_MAP.get(metric_code)
+    if drill_spec:
+        conds = [AiMetricDetail.detail_type == drill_spec["detail_type"]]
+        if drill_spec.get("is_ai") is True:
+            conds.append(AiMetricDetail.is_ai_generated.is_(True))
+        if drill_spec.get("adopted") is True:
+            conds.append(AiMetricDetail.is_adopted.is_(True))
+    else:
+        # 未注册的 metric_code：保守回退到精确匹配
+        conds = [AiMetricDetail.metric_code == metric_code]
+
     if domain_code: conds.append(AiMetricDetail.domain_code == domain_code)
     if project_code: conds.append(AiMetricDetail.project_code == project_code)
     if date_from: conds.append(AiMetricDetail.period_date >= date_from)

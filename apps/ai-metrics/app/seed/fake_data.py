@@ -1,9 +1,11 @@
-"""填充假数据：4 项目 × 6 领域 × 30 天 × 10 个原子指标 + 明细。
+"""**只灌维度** (dim_project / dim_domain / metric_def / view_template)。
+
+事实表数据走 `python -m app.sources.simulate` —— 那里保证 metric_value = SUM(detail)，
+内外一致。本脚本只负责"基础设施"。
 
 运行：
-    python -m app.seed.fake_data            # 默认参数
-    python -m app.seed.fake_data --days 60  # 60 天
-    python -m app.seed.fake_data --reset    # 先清表再灌
+    python -m app.seed.fake_data --reset      # 清掉维度并重建
+    python -m app.seed.fake_data              # 幂等填充（已有则不重复）
 """
 from __future__ import annotations
 import argparse
@@ -123,6 +125,12 @@ def seed_dimensions(db: Session):
 
 
 def seed_facts(db: Session, days: int):
+    """**已废弃 V3**：旧版会写 source='seed' 的 v1 fact，但没有明细 → 内外不一致。
+    保留函数签名仅为向后兼容；现在是 no-op。请改用 `app.sources.simulate`。"""
+    print("⚠ seed_facts is a no-op since V3; use `python -m app.sources.simulate` instead")
+    return
+
+def _legacy_seed_facts_disabled(db: Session, days: int):
     today = date.today()
     detail_id = 1
     for d_offset in range(days):
@@ -192,16 +200,16 @@ def reset_facts(db: Session):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--reset", action="store_true")
+    ap.add_argument("--days", type=int, default=0, help="V3: ignored — use `simulate` for facts")
+    ap.add_argument("--reset", action="store_true", help="reset facts (清空 ai_metric + details)")
     args = ap.parse_args()
     init_db()
     with SessionLocal() as db:
         seed_dimensions(db)
         if args.reset:
             reset_facts(db)
-        seed_facts(db, args.days)
-        print(f"seeded {args.days} days × {len(PROJECTS)} projects × {len(DOMAINS)} domains")
+        print(f"seeded dimensions: {len(PROJECTS)} projects × {len(DOMAINS)} domains × {len(METRIC_DEFS)} metrics × {len(VIEW_TEMPLATES)} view templates")
+        print("== 接下来跑 `python -m app.sources.simulate --source all --days 30 --runs-per-day 2`")
 
 
 if __name__ == "__main__":

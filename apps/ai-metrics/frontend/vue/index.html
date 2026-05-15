@@ -66,6 +66,8 @@ table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-a
 .ver-row .src{font-weight:500;flex:0 0 70px} .ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
 .ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
 .ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
+.delta{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;vertical-align:middle}
+.delta.up{color:#16a34a} .delta.down{color:#dc2626} .delta.flat{color:var(--muted)}
 .modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:200;display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:10px;width:96%;max-width:1200px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,.4)}
 .modal-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -142,7 +144,8 @@ const App = {
     const totalsRow = ref(null);
     const total = ref(0);
     const validVersions = ref({ count: 0, by_date: {} });
-    const popup = ref(null);   // { kind, anchor, ...payload }
+    const compareWith = ref("none");
+    const popup = ref(null);
     const projOpts = ref([]);
     const projQ = ref("");
     const drill = reactive({ open: false, spec: null, col: null, row: null, page: 1, pageSize: 25, sort: null, rowFilters: [], rows: [], total: 0, title: "" });
@@ -166,6 +169,7 @@ const App = {
         paging: "server", page: page.value, page_size: pageSize.value,
         sort: sortStr,
         row_filter: rowFilters.value.length ? rowFilters.value : null,
+        compare_with: compareWith.value,
       };
       const r = await api(`/api/reports/ai_metrics/summary`, {
         method: "POST", body: JSON.stringify(body)
@@ -174,6 +178,21 @@ const App = {
       totalsRow.value = r.data.extras?.totals_row ?? null;
       total.value = r.data.total;
       validVersions.value = r.data.extras?.valid_versions ?? { count: 0, by_date: {} };
+    }
+
+    function openCompare(e) {
+      const r = e.target.getBoundingClientRect();
+      popup.value = { kind: "compare", x: r.right - 220, y: r.bottom + 6 };
+    }
+    function pickCompare(code) {
+      compareWith.value = code; page.value = 1; popup.value = null; refresh();
+    }
+    function deltaFor(r, code) {
+      const v = r[`_delta_pct_${code}`];
+      if (v == null || compareWith.value === "none") return null;
+      const cls = v > 0.01 ? "up" : v < -0.01 ? "down" : "flat";
+      const arrow = cls === "up" ? "▲ " : cls === "down" ? "▼ " : "≈ ";
+      return { cls, text: arrow + Math.abs(v).toFixed(1) + "%" };
     }
 
     function fieldDisplayValue(c, r) {
@@ -362,10 +381,11 @@ const App = {
 
     return {
       config, error, filterValues, rowDim, rowFilters, sort, page, pageSize, rows, totalsRow, total,
-      validVersions, popup, projOpts, projQ, drill,
+      validVersions, compareWith, popup, projOpts, projQ, drill,
       headerMatrix, leafCols, rowFavEnabled, totalPages, drillHeader, drillLeaves,
-      refresh, reset, fmt, fieldDisplayValue, Math,
+      refresh, reset, fmt, fieldDisplayValue, Math, deltaFor,
       toggleSort, toggleRowFav, openRowDim, pickRowDim, openVersions, markVer, isVerPicked,
+      openCompare, pickCompare,
       openColFilter, applyColFilter, clearColFilter, colHasFilter,
       openProjects, searchProjects, toggleProj, projSelected,
       openDrilldown, loadDrill, drillToggleSort, drillOpenColFilter, drillApplyColFilter, drillColHasFilter,
@@ -381,6 +401,7 @@ const App = {
       <span class="sub">config v{{ config.meta.version }} · {{ config.meta.report_type }}</span>
       <span class="grow"></span>
       <span class="pill" @click="openRowDim">📐 {{ config.primary_view.row_dim_options?.find(o=>o.code===rowDim)?.label || rowDim }} ▾</span>
+      <span class="pill" @click="openCompare">📊 {{ config.primary_view.compare?.options?.find(o=>o.code===compareWith)?.label || '不对比' }} ▾</span>
       <span class="pill" @click="openVersions">🕒 v: {{ validVersions.count }} ▾</span>
     </header>
 
@@ -456,6 +477,8 @@ const App = {
                   :class="[fmt(fieldDisplayValue(c,r), c.display).cls, c.default_pinned==='left'?'pin-left':'', (c.code==='domain_code'||c.code==='project_code')?'dim':'', c.drilldown && c.code!=='domain_code' && c.code!=='project_code' && r[c.code]!=null ? 'click' : '']"
                   @click="c.drilldown && c.code!=='domain_code' && c.code!=='project_code' && r[c.code]!=null ? openDrilldown(c, r) : null">
                 {{ fmt(fieldDisplayValue(c, r), c.display).text }}
+                <span v-if="deltaFor(r, c.code) && c.code!=='domain_code' && c.code!=='project_code'"
+                      :class="['delta', deltaFor(r, c.code).cls]">{{ deltaFor(r, c.code).text }}</span>
               </td>
             </tr>
           </tbody>
@@ -465,6 +488,8 @@ const App = {
               <td v-for="c in leafCols" :key="c.code"
                   :class="[fmt(totalsRow[c.code], c.display).cls, c.default_pinned==='left'?'pin-left':'', (c.code==='domain_code'||c.code==='project_code')?'dim':'']">
                 {{ fmt(totalsRow[c.code], c.display).text }}
+                <span v-if="deltaFor(totalsRow, c.code) && c.code!=='domain_code' && c.code!=='project_code'"
+                      :class="['delta', deltaFor(totalsRow, c.code).cls]">{{ deltaFor(totalsRow, c.code).text }}</span>
               </td>
             </tr>
           </tfoot>
@@ -479,6 +504,15 @@ const App = {
            :class="['opt', o.code===rowDim?'sel':'']" @click="pickRowDim(o.code)">
         <span style="flex:1">{{ o.label }}</span>
         <span class="meta">约 {{ o.row_count_hint }} 行</span>
+      </div>
+    </div>
+
+    <!-- COMPARE popup -->
+    <div v-if="popup?.kind === 'compare'" class="popup" :style="{left: popup.x+'px', top: popup.y+'px', minWidth: '220px'}">
+      <div class="popup-head">同比 / 环比</div>
+      <div v-for="o in (config.primary_view.compare?.options || [])" :key="o.code"
+           :class="['opt', o.code===compareWith?'sel':'']" @click="pickCompare(o.code)">
+        <span style="flex:1">{{ o.label }}</span>
       </div>
     </div>
 
