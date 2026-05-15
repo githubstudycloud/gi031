@@ -61,14 +61,14 @@ RUN if [ -n "$NPM_REGISTRY" ] && command -v npm >/dev/null 2>&1; then \
 
 WORKDIR /app
 
-# 先拷 metadata 装依赖，利用 layer cache
+# 必须先把 app/ 也拷进来才能 pip install -e .
+# （pyproject 的 setuptools.packages 引用了 ["app","app.api","..."], 否则解析失败）
 COPY pyproject.toml /app/
-RUN pip install --no-cache-dir ".[mysql]" || pip install --no-cache-dir "."
-
-# 再拷代码（修改源码不重装依赖）
 COPY app /app/app
 COPY prototype /app/prototype
 COPY frontend /app/frontend
+
+RUN pip install --no-cache-dir ".[mysql]" || pip install --no-cache-dir "."
 
 EXPOSE 8001
 ENTRYPOINT ["/usr/bin/tini","--"]
