@@ -115,7 +115,17 @@ def assemble_config(db: Session, report_type: str = "ai_metrics") -> dict:
                 {"code": "project>domain", "label": "项目 + 领域",    "row_count_hint": 24}
             ],
             "default_row_dim": "domain",
-            "row_filter": {"enabled": True}
+            "row_filter": {"enabled": True},
+            "compare": {
+                "enabled": True,
+                "options": [
+                    {"code": "none",        "label": "不对比"},
+                    {"code": "prev_period", "label": "环比 (前一段)"},
+                    {"code": "prev_month",  "label": "对比一月前"},
+                    {"code": "prev_year",   "label": "同比 (去年)"}
+                ],
+                "default": "none"
+            }
         },
         "versions": {
             "list_endpoint": f"/api/reports/{report_type}/versions",
@@ -178,11 +188,14 @@ def assemble_config(db: Session, report_type: str = "ai_metrics") -> dict:
                         {"code": "is_adopted",  "label": "已采纳", "data_type": "bool",   "is_default_visible": True,
                          "default_order": 10, "default_width": 80,
                          "sortable": True, "row_filterable": True, "display": {"kind": "text"}},
-                        {"code": "severity",    "label": "严重度", "data_type": "string", "is_default_visible": False,
+                        {"code": "severity",    "label": "严重度", "data_type": "string", "is_default_visible": True,
                          "default_order": 11, "default_width": 80,
                          "sortable": True, "row_filterable": True, "display": {"kind": "text"}},
-                        {"code": "author",      "label": "负责人", "data_type": "string", "is_default_visible": False,
+                        {"code": "author",      "label": "负责人", "data_type": "string", "is_default_visible": True,
                          "default_order": 12, "default_width": 90,
+                         "sortable": True, "row_filterable": True, "display": {"kind": "text"}},
+                        {"code": "status",      "label": "状态",   "data_type": "string", "is_default_visible": True,
+                         "default_order": 13, "default_width": 90,
                          "sortable": True, "row_filterable": True, "display": {"kind": "text"}},
                     ]},
                 ]

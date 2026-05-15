@@ -40,6 +40,7 @@ def summary(report_type: str, req: SummaryRequest,
         page_size=req.page_size,
         paging_mode=req.paging,
         version_pin=pins,
+        compare_with=req.compare_with,
     )
     return Envelope(data={
         "items": result["rows"],
@@ -51,6 +52,7 @@ def summary(report_type: str, req: SummaryRequest,
             "totals_row": result["totals"],
             "valid_versions": result["valid_versions"],
             "row_dim": req.row_dim,
+            "compare": result.get("compare"),
         }
     })
 

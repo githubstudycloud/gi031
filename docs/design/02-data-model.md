@@ -3,6 +3,15 @@
 > 所有表加 `created_at / updated_at / created_by / updated_by`，文中省略。
 > 所有"删除"都是软删除：`is_deleted boolean` + `deleted_at`，禁止物理 DELETE，唯有"物理删除字段"需要先改生成代码再发 DDL 工单。
 
+> **V3 增量（来自 `apps/ai-metrics` 实现回灌）**
+> - 事实表唯一键加 `version_no` —— 每日多次抓取的"快照版本"全保留
+> - 独立 `*_invalid_mark` 小表打"失效"标记，查询 `LEFT JOIN ... WHERE id IS NULL` 自动跳过
+> - 明细表加 `version_no` / `source` / `status` / `severity` / `author` 列，供下钻 paging+sort+filter
+> - 行收藏 `user_row_favorite` 用规范化字符串 `row_key` (如 `"domain_code=core"`)，避免 JSON 函数差异
+> - **预聚合**：长表 sum 进 `report_fact_<T>_daily` (per date×proj×dom×metric)，刷新走 `services/preagg.py`
+> - **同比/环比**：summary 接收 `compare_with: prev_period | prev_month | prev_year`，响应每行带 `_prev_{m}` / `_delta_pct_{m}`
+> - **MySQL 5.7/8.0 双向兼容**：`utf8mb4_unicode_ci` + 无 CTE/窗口函数，子查询 + GROUP BY MAX 即可
+
 ## 1. ER 一览
 
 ```

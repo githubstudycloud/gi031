@@ -116,34 +116,66 @@ def simulate_source_day(db, src_key, the_date, projects, domains, detail_per_com
                 )
                 inserted += 1
 
-            # 明细（详情）—— 改为每个 ai_x 指标 × proj × domain 写 detail_per_combo 条
-            # 默认 8 条 × 4 source × 6 domain × 4 proj × 1 day = 768 条/天，够分页+筛选演示
-            for m_code, detail_type, label_tpl in [
-                ("ai_case_count",  "case",        "AI 用例"),
-                ("ai_req_count",   "requirement", "AI 需求"),
-                ("ai_code_lines",  "code_change", "AI 脚本 PR"),
-            ]:
+            # 明细（详情）—— **覆盖全部 7 个 drilldown 指标** + 真实字段（status/priority/files/lines）
+            # 默认 detail_per_combo=8 条 × 7 metric × ≈相关 source × 4 proj × 6 domain ≈ 几百条/天/源
+            DETAIL_SPECS = [
+                # metric_code,        detail_type,    label_tpl,           is_ai
+                ("req_count",         "requirement",  "需求",              False),
+                ("ai_req_count",      "requirement",  "AI 需求",           True ),
+                ("new_case_count",    "case",         "新增用例",          False),
+                ("ai_case_count",     "case",         "AI 用例",           True ),
+                ("ai_code_lines",     "code_change",  "AI 脚本 PR",        True ),
+                ("total_code_lines",  "code_change",  "脚本 PR (总)",      False),
+                ("new_script_count",  "script_file",  "新增测试脚本",      False),
+            ]
+            STATUS_MAP = {
+                "requirement": ["draft", "reviewing", "approved", "in_dev", "done", "rejected"],
+                "case":        ["draft", "executable", "passed", "failed", "blocked"],
+                "code_change": ["open", "review", "merged", "merged", "merged", "closed"],
+                "script_file": ["draft", "merged", "merged", "in_use"],
+            }
+            for m_code, detail_type, label_tpl, is_ai_default in DETAIL_SPECS:
                 if m_code not in vals: continue
                 count = vals[m_code]
                 if count <= 0: continue
-                # 写 detail_per_combo 条（不超过指标数本身）
-                n = min(detail_per_combo, max(1, int(count) // 2 or 1))
+                n = min(detail_per_combo, max(1, int(count) // 3 or 1))
                 for i in range(n):
                     detail_seq += 1
-                    severity = random.choice(["high","medium","low","low","low"])
-                    author = random.choice(["alice","bob","charlie","dave","eve","frank"])
+                    is_ai = is_ai_default if m_code.startswith("ai_") else (random.random() < 0.35)
+                    # case: 60% AI 采纳；其它没有 is_adopted 语义
+                    is_adopted = None
+                    if detail_type == "case" and is_ai:
+                        is_adopted = random.random() < 0.62
+                    sev = random.choice(["high","high","medium","low","low","low"]) if detail_type in ("case","requirement") else None
+                    author = random.choice(["alice","bob","charlie","dave","eve","frank","grace","henry"])
+                    status = random.choice(STATUS_MAP[detail_type])
+                    extra = {"source": src_key, "version": version_no,
+                             "scrape_at": the_date.isoformat()}
+                    if detail_type == "code_change":
+                        extra["lines"] = random.randint(10, 320)
+                        extra["files"] = random.randint(1, 8)
+                        extra["lang"]  = random.choice(["python","typescript","go","java"])
+                    elif detail_type == "case":
+                        extra["steps"] = random.randint(3, 15)
+                        extra["last_run"] = random.choice(["passed","failed","skipped",None])
+                    elif detail_type == "requirement":
+                        extra["complexity"] = random.choice(["s","m","l","xl"])
+                        extra["story_points"] = random.choice([1, 2, 3, 5, 8, 13])
+                    elif detail_type == "script_file":
+                        extra["loc"] = random.randint(20, 400)
                     db.add(AiMetricDetail(
                         period_date=the_date, project_code=proj, domain_code=dom,
                         metric_code=m_code, detail_type=detail_type,
                         source=src_key, version_no=version_no,
                         ref_id=f"{src_key.upper()}-{detail_type[:3].upper()}-{proj[-1].upper()}{dom[0].upper()}-{the_date.strftime('%m%d')}-{version_no}{i:03d}",
-                        ref_label=f"[{rules['label']}] {label_tpl} {dom}/{i+1} (v{version_no})",
+                        ref_label=f"[{rules['label']}] {label_tpl} {dom}/{i+1} v{version_no} [{status}]",
                         ref_url=f"https://{src_key}.example.com/{detail_type}/{detail_seq}",
-                        is_ai_generated=True,
-                        is_adopted=(random.random() < 0.65) if m_code == "ai_case_count" else None,
-                        severity=severity if detail_type != "code_change" else None,
+                        is_ai_generated=is_ai,
+                        is_adopted=is_adopted,
+                        severity=sev,
                         author=author,
-                        payload={"source": src_key, "scrape_at": the_date.isoformat(), "version": version_no},
+                        status=status,
+                        payload=extra,
                     ))
     return inserted, skipped, version_no
 

@@ -119,6 +119,29 @@ class AiMetricInvalidMark(Base):
     )
 
 
+class ReportFactDaily(Base):
+    """**预聚合表**：每日 latest-valid 的事实卷起来 (per date × project × domain × metric)。
+
+    刷新方式：`POST /api/admin/preagg/refresh` 或 CLI `python -m app.services.preagg refresh`
+    查询时若设 USE_PREAGG=1，summary 走这张表（一次 GROUP BY），速度比 long-table 快 5~10×。
+
+    与原始 ai_metric 表关系：本表 = ai_metric 按 (date,source,version=latest_valid)
+    join + per metric SUM 的结果。不存版本号，因为它是"当前视角"的快照。
+    """
+    __tablename__ = "report_fact_ai_metrics_daily"
+    period_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    project_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    domain_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    metric_code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    metric_value: Mapped[float] = mapped_column(Numeric(18, 4))
+    refreshed_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+    __table_args__ = (
+        Index("idx_preagg_date", "period_date"),
+        Index("idx_preagg_proj_dom", "project_code", "domain_code"),
+        MYSQL_TABLE_ARGS,
+    )
+
+
 class UserRowFavorite(Base):
     """(user, report, row_key_json) 收藏。查询时 join 给每行 _row_favorite=true。"""
     __tablename__ = "user_row_favorite"
@@ -167,8 +190,9 @@ class AiMetricDetail(Base):
     ref_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
     is_adopted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)    # high/medium/low (筛选示例)
+    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)    # high/medium/low
     author: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)      # draft/reviewing/passed/merged ...
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     __table_args__ = (

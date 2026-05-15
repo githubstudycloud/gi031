@@ -11,7 +11,7 @@ V2 升级要点：
 """
 from __future__ import annotations
 import json
-from datetime import date
+from datetime import date, timedelta
 from collections import defaultdict
 from typing import Literal
 
@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     AiMetric, AiMetricDetail, AiMetricInvalidMark,
-    DimDomain, DimProject, UserRowFavorite,
+    DimDomain, DimProject, UserRowFavorite, ReportFactDaily,
 )
+from ..settings import settings
 
 
 def _pct(num, den):
@@ -208,6 +209,29 @@ def _apply_sort(rows: list[dict], sort: str | None, row_favorite_first: bool = T
     return rows
 
 
+def _shift_range(date_from: date, date_to: date, policy: str) -> tuple[date, date]:
+    """计算对比期日期区间。
+
+    - prev_period: 相同长度的紧邻前一段 (业务上的"环比")
+    - prev_month : (date_from - 1 month, date_to - 1 month) 近似（按 30 天）
+    - prev_year  : (date_from - 365 days, date_to - 365 days)
+    """
+    days = (date_to - date_from).days + 1
+    if policy == "prev_period":
+        return date_from - timedelta(days=days), date_from - timedelta(days=1)
+    if policy == "prev_month":
+        return date_from - timedelta(days=30), date_to - timedelta(days=30)
+    if policy == "prev_year":
+        return date_from - timedelta(days=365), date_to - timedelta(days=365)
+    raise ValueError(f"unsupported compare_with: {policy}")
+
+
+def _delta_pct(now, prev):
+    if prev is None or prev == 0: return None
+    if now is None: return None
+    return round((float(now) - float(prev)) * 100.0 / float(prev), 2)
+
+
 def fetch_summary(
     db: Session,
     date_from: date | None,
@@ -219,7 +243,8 @@ def fetch_summary(
     sort: str | None = None,
     page: int = 1, page_size: int = 200,
     paging_mode: str = "server",      # "server" | "none"
-    version_pin: dict | None = None,  # 前端可传 [{date, source, version_no}] 强制选版本
+    version_pin: dict | None = None,
+    compare_with: str | None = None,
 ) -> dict:
     """主接口：返回 {items, totals, page, page_size, total, version_summary}。"""
     if row_dim not in ("domain", "project>domain"):
@@ -264,30 +289,40 @@ def fetch_summary(
     if date_to:   conds.append(AiMetric.period_date <= date_to)
     if project_codes: conds.append(AiMetric.project_code.in_(project_codes))
 
-    # 3) 主查询：JOIN valid_sq 限定版本；GROUP BY 维度 × metric
-    if row_dim == "domain":
-        group_cols = [AiMetric.domain_code]
-    else:  # project>domain
-        group_cols = [AiMetric.project_code, AiMetric.domain_code]
-
-    stmt = (
-        select(
-            *group_cols,
-            AiMetric.metric_code,
-            func.sum(AiMetric.metric_value).label("v"),
+    # 3) 主查询：根据 settings.use_preagg 决定走 long-table+latest_valid join 还是预聚合表
+    if settings.use_preagg:
+        if row_dim == "domain":
+            pa_cols = [ReportFactDaily.domain_code]
+        else:
+            pa_cols = [ReportFactDaily.project_code, ReportFactDaily.domain_code]
+        pa_conds = [ReportFactDaily.metric_code.in_(ATOMIC_METRICS)]
+        if date_from: pa_conds.append(ReportFactDaily.period_date >= date_from)
+        if date_to:   pa_conds.append(ReportFactDaily.period_date <= date_to)
+        if project_codes: pa_conds.append(ReportFactDaily.project_code.in_(project_codes))
+        stmt = (
+            select(*pa_cols, ReportFactDaily.metric_code,
+                   func.sum(ReportFactDaily.metric_value).label("v"))
+            .where(and_(True, *pa_conds))
+            .group_by(*pa_cols, ReportFactDaily.metric_code)
         )
-        .join(
-            valid_sq,
-            and_(
+        rows_raw = db.execute(stmt).all()
+    else:
+        if row_dim == "domain":
+            group_cols = [AiMetric.domain_code]
+        else:
+            group_cols = [AiMetric.project_code, AiMetric.domain_code]
+        stmt = (
+            select(*group_cols, AiMetric.metric_code,
+                   func.sum(AiMetric.metric_value).label("v"))
+            .join(valid_sq, and_(
                 AiMetric.period_date == valid_sq.c.d,
                 AiMetric.source == valid_sq.c.s,
                 AiMetric.version_no == valid_sq.c.v,
-            ),
+            ))
+            .where(and_(True, *conds))
+            .group_by(*group_cols, AiMetric.metric_code)
         )
-        .where(and_(True, *conds))
-        .group_by(*group_cols, AiMetric.metric_code)
-    )
-    rows_raw = db.execute(stmt).all()
+        rows_raw = db.execute(stmt).all()
 
     # 4) 装配 row dict
     keyfn = (lambda r: (r[0],)) if row_dim == "domain" else (lambda r: (r[0], r[1]))
@@ -356,11 +391,60 @@ def fetch_summary(
         start = (page - 1) * page_size
         items = items[start: start + page_size]
 
+    # 9) compare: 把当前窗口"平移"再算一次（不再分页/排序），合并到响应
+    compare_data = None
+    if compare_with and compare_with != "none" and date_from and date_to:
+        prev_from, prev_to = _shift_range(date_from, date_to, compare_with)
+        # 递归调用自己，不带 sort / paging / compare（避免无限循环），row_dim 一致
+        prev_resp = fetch_summary(
+            db, date_from=prev_from, date_to=prev_to, project_codes=project_codes,
+            row_dim=row_dim, user_id=user_id, row_filter=None,
+            sort=None, page=1, page_size=10_000, paging_mode="none",
+            version_pin=None, compare_with=None,
+        )
+        # 索引 prev rows 用主键映射
+        prev_by_key: dict[str, dict] = {}
+        for pr in prev_resp["rows"]:
+            if row_dim == "domain":
+                k = f"domain_code={pr['_domain_code_raw']}"
+            else:
+                k = f"project_code={pr['_project_code_raw']};domain_code={pr['_domain_code_raw']}"
+            prev_by_key[k] = pr
+        # 给当前 items 加 _prev_{m} / _delta_{m} / _delta_pct_{m}
+        comparable_metrics = ATOMIC_METRICS + [
+            "ai_req_coverage", "ai_case_ratio", "ai_case_adoption_rate",
+            "ai_script_code_ratio", "ai_code_accuracy", "new_script_ai_ratio",
+        ]
+        for it in items:
+            if row_dim == "domain":
+                k = f"domain_code={it['_domain_code_raw']}"
+            else:
+                k = f"project_code={it['_project_code_raw']};domain_code={it['_domain_code_raw']}"
+            prev = prev_by_key.get(k, {})
+            for m in comparable_metrics:
+                pv = prev.get(m)
+                it[f"_prev_{m}"] = pv
+                it[f"_delta_pct_{m}"] = _delta_pct(it.get(m), pv)
+        # 合计行的对比
+        prev_totals = prev_resp["totals"]
+        for m in comparable_metrics:
+            pv = prev_totals.get(m)
+            totals[f"_prev_{m}"] = pv
+            totals[f"_delta_pct_{m}"] = _delta_pct(totals.get(m), pv)
+        compare_data = {
+            "policy": compare_with,
+            "prev_from": prev_from.isoformat(),
+            "prev_to": prev_to.isoformat(),
+            "now_from": date_from.isoformat(),
+            "now_to": date_to.isoformat(),
+        }
+
     return {
         "rows": items,
         "totals": totals,
         "total": total,
         "valid_versions": _summarize_valid(valid),
+        "compare": compare_data,
     }
 
 
@@ -492,7 +576,7 @@ def fetch_drilldown(
             "source": r.source, "version_no": r.version_no,
             "is_ai_generated": bool(r.is_ai_generated),
             "is_adopted": (None if r.is_adopted is None else bool(r.is_adopted)),
-            "severity": r.severity, "author": r.author,
+            "severity": r.severity, "author": r.author, "status": r.status,
             "period_date": r.period_date.isoformat(),
             "project_code": r.project_code, "domain_code": r.domain_code,
             "payload": r.payload,

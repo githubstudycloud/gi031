@@ -1,5 +1,16 @@
 # 03 · API Spec —— 自描述配置协议
 
+> **V3 增量（来自 `apps/ai-metrics` 实战验证）**
+>
+> - `summary` 请求加 `compare_with: "prev_period" | "prev_month" | "prev_year"`；响应每行新增 `_prev_<metric>` / `_delta_pct_<metric>` 字段。
+> - `summary` 响应 `extras.compare = {policy, prev_from, prev_to, now_from, now_to}` 告诉前端对比窗口。
+> - `drilldown` header_tree 已落地完整 paging/sort/row_filter 协议（V2 设计在 ai-metrics 已跑通，可作为参考实现）。
+> - `versions` 端点确认实现路径：`GET /reports/{type}/versions?date_from=&date_to=&source=` 返 `[{period_date, source, version_no, is_valid, marked_at, marked_by, reason}]`；`POST /reports/{type}/versions/mark` 标失效/恢复。
+> - `row_favorite` 端点：`POST /users/me/row_favorites/{report_type}` body `{row_key, favorited}`；row_key 用规范化字符串 (例 `{"domain_code":"core"}`)。
+> - **预聚合切换**：服务端 env `USE_PREAGG=1` 时 `summary` 走 `report_fact_<T>_daily` (per-day 已 sum 完)；否则走原始长表+latest_valid join。`POST /admin/preagg/refresh` 刷预聚合。
+
+
+
 > **核心理念**：前端**不知道**单个 `report_type` 的字段、筛选、列、下拉源是什么。
 > 它只会做三件事：
 > 1. 调一次 `/config` 拿"用什么 URL + 传什么参数 + 怎么分页"的元描述。

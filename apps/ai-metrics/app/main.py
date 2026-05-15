@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .settings import settings
 from .db import init_db
-from .api import meta, config as config_api, data, ingest, view_templates as vt_api
+from .api import meta, config as config_api, data, ingest, view_templates as vt_api, admin
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ app.include_router(config_api.router, prefix=settings.api_prefix, tags=["config"
 app.include_router(data.router,       prefix=settings.api_prefix, tags=["data"])
 app.include_router(ingest.router,     prefix=settings.api_prefix, tags=["ingest"])
 app.include_router(vt_api.router,     prefix=settings.api_prefix, tags=["view-templates"])
+app.include_router(admin.router,      prefix=settings.api_prefix, tags=["admin"])
 
 
 # 静态前端：把 prototype/ + frontend/vue/ + frontend/react/ 挂在不同前缀下

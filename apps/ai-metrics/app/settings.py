@@ -14,5 +14,9 @@ class Settings(BaseSettings):
     seed_projects: int = 4
     seed_domains: int = 6
 
+    # V3：summary 走预聚合表 (report_fact_ai_metrics_daily) 还是原始 ai_metric long-table。
+    # True → 必须先调 /api/admin/preagg/refresh 灌好 preagg。
+    use_preagg: bool = False
+
 
 settings = Settings()

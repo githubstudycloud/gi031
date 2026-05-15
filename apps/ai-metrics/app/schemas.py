@@ -30,9 +30,12 @@ class SummaryRequest(BaseModel):
     paging: Literal["server", "none"] = "server"
     page: int = 1
     page_size: int = 200
-    sort: str | None = None                # e.g. "ai_code_lines:desc" or "domain_code:asc"
+    sort: str | None = None
     row_filter: list[dict] | None = None
-    version_pin: list[VersionPin] | None = None   # 强制选指定 (date, source, version)
+    version_pin: list[VersionPin] | None = None
+    # V3：同比 / 环比 / 自定义对比期
+    # prev_period = 同长度前一段；prev_year = 去年同期；prev_month = 一个月前同长度
+    compare_with: Literal["prev_period", "prev_year", "prev_month", "none"] | None = None
 
 
 class DistinctRequest(BaseModel):

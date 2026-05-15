@@ -121,6 +121,10 @@ table.grid tfoot td.num{text-align:right}
 .ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
 .ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
 .ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
+.delta{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;vertical-align:middle}
+.delta.up{color:#16a34a}
+.delta.down{color:var(--danger)}
+.delta.flat{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -131,6 +135,7 @@ table.grid tfoot td.num{text-align:right}
       <span class="sub" id="sub"></span>
       <span class="grow"></span>
       <span class="vt-pill" id="rowDimPill" title="切换行维度">📐 <span id="rowDimLabel">领域</span> ▾</span>
+      <span class="vt-pill" id="comparePill" title="同比 / 环比 / 对比一月前">📊 <span id="compareLabel">不对比</span> ▾</span>
       <span class="vt-pill" id="versionPill" title="查看 / 标记数据版本">🕒 <span id="versionLabel">v: -</span> ▾</span>
       <span class="vt-pill" id="vtPill" title="切换视图模板">🎨 <span id="vtLabel">默认</span> <span id="vtSrc" class="badge-loc">内置</span> ▾</span>
       <span class="sub">协议：<a href="/docs" target="_blank">/docs</a> · <a href="#" id="apiInfo">API 配置</a></span>
@@ -196,6 +201,9 @@ const state = {
   page: 1, pageSize: 50,
   validVersions: { count: 0, by_date: {} },
   userId: "demo-user",
+  // V3 新增
+  compareWith: "none",           // none | prev_period | prev_month | prev_year
+  compare: null,                 // { policy, prev_from, prev_to, now_from, now_to }
 };
 
 const BUILTIN_TEMPLATES = [
@@ -496,6 +504,16 @@ function renderTable() {
       td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
       if (c.code === "domain_code" || c.code === "project_code") td.classList.add("dim");
       td.textContent = fm.text;
+      // 同比/环比 delta
+      const dpct = r[`_delta_pct_${c.code}`];
+      if (state.compareWith !== "none" && dpct != null && c.code !== "domain_code" && c.code !== "project_code") {
+        const span = document.createElement("span");
+        const cls = dpct > 0.01 ? "up" : dpct < -0.01 ? "down" : "flat";
+        span.className = "delta " + cls;
+        span.textContent = (cls === "up" ? "▲ " : cls === "down" ? "▼ " : "≈ ") + Math.abs(dpct).toFixed(1) + "%";
+        td.appendChild(document.createTextNode(" "));
+        td.appendChild(span);
+      }
       if (c.drilldown && c.code !== "domain_code" && c.code !== "project_code" && r[c.code] != null) {
         td.classList.add("click");
         td.onclick = () => openDrilldown(c, r);
@@ -519,6 +537,15 @@ function renderTable() {
       td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
       if (c.code === "domain_code" || c.code === "project_code") td.classList.add("dim");
       td.textContent = fm.text;
+      const dpct = state.totalsRow[`_delta_pct_${c.code}`];
+      if (state.compareWith !== "none" && dpct != null && c.code !== "domain_code" && c.code !== "project_code") {
+        const span = document.createElement("span");
+        const cls = dpct > 0.01 ? "up" : dpct < -0.01 ? "down" : "flat";
+        span.className = "delta " + cls;
+        span.textContent = (cls === "up" ? "▲ " : cls === "down" ? "▼ " : "≈ ") + Math.abs(dpct).toFixed(1) + "%";
+        td.appendChild(document.createTextNode(" "));
+        td.appendChild(span);
+      }
       tr.appendChild(td);
     }
     tfoot.appendChild(tr); tbl.appendChild(tfoot);
@@ -626,6 +653,7 @@ async function refresh() {
     paging: "server",
     page: state.page, page_size: state.pageSize,
     sort, row_filter: state.rowFilters.length ? state.rowFilters : null,
+    compare_with: state.compareWith,
   };
   const r = await api(`/api/reports/${state.config.meta.report_type}/summary`, {
     method: "POST", body: JSON.stringify(body)
@@ -634,6 +662,7 @@ async function refresh() {
   state.totalsRow = r.data.extras?.totals_row ?? null;
   state.total = r.data.total;
   state.validVersions = r.data.extras?.valid_versions ?? { count: 0, by_date: {} };
+  state.compare = r.data.extras?.compare ?? null;
   document.getElementById("versionLabel").textContent = `v: ${state.validVersions.count}`;
   renderTable();
 }
@@ -841,6 +870,31 @@ function applyViewTemplate(t) {
   s.textContent = t.source === "backend" ? "后端" : "内置";
   renderTable();
 }
+/* === Compare popup (同比 / 环比) === */
+function openComparePopup() {
+  closePopup();
+  const rect = document.getElementById("comparePill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup-bd";
+  popupEl.style.left = (rect.right - 220) + "px";
+  popupEl.style.top = (rect.bottom + 6) + "px";
+  popupEl.style.minWidth = "220px";
+  const opts = state.config.primary_view.compare?.options || [];
+  popupEl.innerHTML = `<h4 style="margin:0 0 6px;padding:0 6px;font-size:12px;color:var(--muted);">同比 / 环比</h4>`;
+  for (const o of opts) {
+    const div = document.createElement("div");
+    div.className = "popup-opt" + (o.code === state.compareWith ? " sel" : "");
+    div.innerHTML = `<span style="flex:1">${o.label}</span>`;
+    div.onclick = () => {
+      state.compareWith = o.code;
+      document.getElementById("compareLabel").textContent = o.label;
+      state.page = 1;
+      closePopup(); refresh();
+    };
+    popupEl.appendChild(div);
+  }
+  document.body.appendChild(popupEl);
+}
+
 /* === Row dim popup === */
 function openRowDimPopup() {
   closePopup();
@@ -980,6 +1034,7 @@ function renderKpi() {
     document.getElementById("vtPill").onclick = openVtPopup;
     document.getElementById("rowDimPill").onclick = openRowDimPopup;
     document.getElementById("versionPill").onclick = openVersionPopup;
+    document.getElementById("comparePill").onclick = openComparePopup;
     document.getElementById("prevPage").onclick = () => { if (state.page>1) { state.page--; refresh(); } };
     document.getElementById("nextPage").onclick = () => { state.page++; refresh(); };
     document.getElementById("pageSizeSel").onchange = (e) => { state.pageSize = +e.target.value; state.page = 1; refresh(); };

@@ -1,5 +1,16 @@
 # 05 · Frontend Integration —— Vue 3 与 React 18 对接
 
+> **V3 实战回馈（`apps/ai-metrics` 已上线验证）**
+>
+> - **Vue 3 + React 18 同一份代码生成像素级一致的 UI**：两端共享 `isLeaf` / `depth` / `leaves` / `buildHeaderMatrix` / `visibleColumns` / `fmt` 5 个纯函数（inline 同款），框架差异只在 v-for/map 语法层。
+> - **离线部署友好**：`vue.esm-browser.prod.js` / `react.production.min.js` / `react-dom.production.min.js` / `htm.module.js` 4 个 CDN 文件全部 vendor 到 `frontend/vendor/` (总 ~316 KB)，HTML 引用 `../vendor/x.js` 相对路径；后端 FastAPI mount `/vendor` 静态服务。
+> - **同比/环比 UI**：每个数字单元格在 `compare_with !== "none"` 时尾巴附 `<span class="delta up|down|flat">▲/▼/≈ X%</span>`；颜色 success/danger/muted。从 `_delta_pct_<metric>` 字段读。
+> - **下钻列要 `is_default_visible: false` 时也要在 header_tree 中声明**——否则前端不知道列存在；hide/show 走 column drawer/列选择器。
+> - **`buildHeaderMatrix` 空 tree 容错**：`if (!tree?.length) return {rows:[], maxD:0}` —— 初始加载阶段 useMemo/computed 必踩。
+> - **`/config` 协议升级 v2**：新增 `primary_view.row_dim_options` / `row_favorite` / `row_filter` / `compare` / `versions` 端点指针。前端按 `meta.version` 失效缓存。
+
+
+
 ## 1. 设计原则
 
 - **前端是哑客户端**：除"展示规则"外，所有"调哪个 URL、怎么传参、怎么分页"都来自 `/config` 响应。
