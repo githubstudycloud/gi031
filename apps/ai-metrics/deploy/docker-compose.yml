@@ -1,0 +1,38 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: ai-metrics-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-rootpwd}"
+      MYSQL_DATABASE: ai_metrics
+      MYSQL_USER: ai_metrics
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-aimpwd}"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "127.0.0.1:3307:3306"   # 仅本机暴露；生产建议保留容器内访问
+
+  api:
+    build:
+      context: ..              # 指向 apps/ai-metrics/
+      dockerfile: deploy/Dockerfile
+    container_name: ai-metrics-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql+pymysql://ai_metrics:${MYSQL_PASSWORD:-aimpwd}@db:3306/ai_metrics?charset=utf8mb4"
+      CORS_ORIGINS: "*"
+    ports:
+      - "8001:8001"
+
+volumes:
+  mysql-data: {}

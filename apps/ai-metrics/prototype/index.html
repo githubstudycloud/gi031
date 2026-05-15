@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AI 测试度量看板</title>
+<style>
+:root {
+  --bg:#f4f6fb; --panel:#fff; --border:#e3e7ee; --border-strong:#c9d0db;
+  --text:#0f172a; --text-soft:#475569; --muted:#94a3b8;
+  --primary:#2563eb; --primary-50:#eff6ff; --primary-100:#dbeafe; --primary-600:#1d4ed8;
+  --success:#16a34a; --danger:#dc2626; --warning:#d97706;
+  --gold:#f59e0b; --row-hover:#eff6ff;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06); --shadow-lg:0 16px 32px rgba(15,23,42,.18);
+}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif;font-feature-settings:"tnum" 1}
+table{font-variant-numeric:tabular-nums} button{font:inherit;cursor:pointer}
+.app{max-width:1500px;margin:0 auto;padding:0 20px 24px}
+
+.sticky-top{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,var(--bg) 0%,var(--bg) 70%,rgba(244,246,251,0) 100%);padding-top:16px;margin:0 -20px;padding-left:20px;padding-right:20px}
+.topbar{display:flex;align-items:center;gap:12px;min-height:52px}
+.topbar h1{font-size:18px;margin:0;letter-spacing:-.01em}
+.topbar .sub{color:var(--muted);font-size:12px}
+.topbar .grow{flex:1}
+
+.btn{background:#fff;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;color:var(--text);transition:all .12s;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-50)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary-600);color:#fff}
+.btn.sm{padding:3px 8px;font-size:12px} .btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
+.btn.ghost:hover{color:var(--primary);background:var(--primary-50)}
+
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-sm)}
+.filterbar{padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>label{font-size:11px;color:var(--text-soft);font-weight:500}
+.field-input{display:flex;align-items:center;gap:6px;padding:5px 9px;min-height:30px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;min-width:200px;cursor:pointer}
+.field-input:hover{border-color:var(--primary)}
+.field-input input{border:0;outline:0;background:transparent;font:inherit;min-width:60px}
+.chip{background:var(--primary-50);color:var(--primary-600);border-radius:999px;padding:1px 8px;font-size:12px;display:inline-flex;align-items:center;gap:4px}
+.chip .x{color:var(--muted);cursor:pointer;padding:0 2px}
+.chip .x:hover{color:var(--danger)}
+.actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.toolbar{display:flex;gap:12px;align-items:center;padding:8px 12px;font-size:12px;color:var(--text-soft);background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px}
+.toolbar .grow{flex:1}
+
+.tableshell{background:var(--panel);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;overflow:hidden;box-shadow:var(--shadow-sm)}
+.table-wrap{overflow:auto;max-height:62vh}
+table.grid{border-collapse:separate;border-spacing:0;width:100%}
+table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;white-space:nowrap;user-select:none;color:var(--text);font-size:12px;position:sticky;z-index:3}
+table.grid thead tr:nth-child(1) th{top:0}
+table.grid thead tr:nth-child(2) th{top:32px}
+table.grid thead th.leaf{background:#e5edf7;border-bottom:2px solid #c7d2fe}
+table.grid thead th.leaf.sorted{border-bottom-color:var(--primary);background:linear-gradient(180deg,#dbeafe 0%,#c7d8f5 100%)}
+table.grid thead th.sortable{cursor:pointer}
+table.grid thead th.sortable:hover{background:#dbeafe}
+table.grid thead th .arr{color:var(--muted);font-size:9px;margin-left:3px}
+table.grid thead th.sorted .arr{color:var(--primary)}
+table.grid thead th.pin-left,table.grid tbody td.pin-left,table.grid tfoot td.pin-left{position:sticky;left:0;background:inherit;z-index:2;box-shadow:1px 0 0 var(--border)}
+table.grid thead th.pin-left{z-index:4}
+table.grid tbody td{padding:7px 10px;border-bottom:1px solid #eef0f3;white-space:nowrap;vertical-align:middle}
+table.grid tbody tr:nth-child(even) td{background:#fafbfd}
+table.grid tbody tr:hover td{background:var(--row-hover)}
+table.grid td.num{text-align:right} table.grid td.empty{color:var(--muted);font-style:italic;text-align:center}
+table.grid td.dim{font-weight:500} table.grid td.click{cursor:pointer;color:var(--primary-600)}
+table.grid td.click:hover{text-decoration:underline;background:var(--primary-50) !important}
+
+/* TFOOT 合计行：sticky 在底 */
+table.grid tfoot td{padding:8px 10px;border-top:2px solid var(--primary);background:#f3f8ff !important;font-weight:600;color:var(--text);position:sticky;bottom:0;z-index:3;white-space:nowrap}
+table.grid tfoot td.dim{color:var(--primary-600)}
+table.grid tfoot td.num{text-align:right}
+
+.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:var(--shadow-lg);z-index:100;min-width:280px;max-width:380px}
+.popup-head{padding:8px 10px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.popup-head input.q{width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:5px 9px;outline:0}
+.popup-body{max-height:300px;overflow:auto;padding:4px 0}
+.opt{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:13px;border-radius:4px;margin:0 4px}
+.opt:hover{background:var(--row-hover)}
+.opt.sel{background:var(--primary-50);color:var(--primary-600)}
+.opt .lbl{flex:1}
+.popup-foot{padding:6px 10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:11px}
+
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:300;display:none;align-items:center;justify-content:center}
+.modal-mask.show{display:flex}
+.modal{background:#fff;border-radius:10px;box-shadow:var(--shadow-lg);max-width:1100px;width:90%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#fff 0%,#f8fafc 100%)}
+.modal-head h2{margin:0;font-size:15px;flex:1}
+.modal-head .sub{color:var(--muted);font-size:12px}
+.modal-body{padding:12px 18px;overflow:auto;flex:1}
+.modal-body .mt{max-height:56vh;overflow:auto;border:1px solid var(--border);border-radius:8px}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#0f172a;color:#fff;padding:8px 14px;border-radius:6px;z-index:500;box-shadow:var(--shadow-lg);font-size:12px;opacity:0;pointer-events:none;transition:all .25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.kbd{background:#f1f5fa;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text-soft)}
+.unit{color:var(--muted);font-size:10px;margin-left:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sticky-top">
+    <header class="topbar">
+      <h1 id="title">AI 测试度量看板</h1>
+      <span class="sub" id="sub"></span>
+      <span class="grow"></span>
+      <span class="sub">协议：<a href="/docs" target="_blank">/docs</a> · <a href="#" id="apiInfo">API 配置</a></span>
+    </header>
+    <div class="panel filterbar" id="filterBar"></div>
+  </div>
+
+  <div class="toolbar">
+    <span id="rowMeta">—</span>
+    <span class="grow"></span>
+    <span>提示：<span class="kbd">个数 / 入库行</span> 单元格点击下钻；末行 <b>合计</b> 始终吸底</span>
+  </div>
+  <div class="tableshell">
+    <div class="table-wrap"><table class="grid" id="table"></table></div>
+  </div>
+</div>
+
+<!-- Drilldown modal -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">明细</h2>
+      <span class="sub" id="modalSub"></span>
+      <button class="btn ghost" id="modalClose" style="width:28px;height:28px;padding:0">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="mt"><table class="grid" id="modalTable"></table></div>
+      <div id="modalPag" style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-soft)"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   API base —— 同源 (FastAPI 直接 mount /ui) 时为空；
+   独立打开 HTML 时手工指向 http://127.0.0.1:8001
+   ============================================================ */
+const API_BASE = (location.protocol === "file:") ? "http://127.0.0.1:8001" : "";
+
+const state = {
+  config: null,
+  filterValues: {},
+  sort: null,
+  rows: [], totalsRow: null, total: 0,
+};
+
+async function api(path, opts = {}) {
+  const r = await fetch(API_BASE + path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status + ": " + path);
+  return r.json();
+}
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+/* === Header tree helpers === */
+const isLeaf = n => !n.children;
+function depth(n) { return isLeaf(n) ? 1 : 1 + Math.max(...n.children.map(depth)); }
+function leaves(n) { return isLeaf(n) ? [n] : n.children.flatMap(leaves); }
+function buildHeaderMatrix(tree) {
+  const maxD = Math.max(...tree.map(depth));
+  const rows = Array.from({ length: maxD }, () => []);
+  function walk(n, d) {
+    if (isLeaf(n)) { rows[d].push({ kind: "leaf", node: n, rowSpan: maxD - d }); return; }
+    const span = leaves(n).length;
+    rows[d].push({ kind: "group", node: n, colSpan: span });
+    n.children.forEach(c => walk(c, d + 1));
+  }
+  tree.forEach(n => walk(n, 0));
+  return { rows, maxD };
+}
+
+/* === Formatting === */
+function fmt(v, disp) {
+  if (v == null || v === "") return { text: "—", cls: "empty" };
+  if (!disp || disp.kind === "text") return { text: String(v), cls: "" };
+  if (disp.kind === "number") {
+    const n = Number(v); if (Number.isNaN(n)) return { text: String(v), cls: "" };
+    const s = n.toLocaleString("zh-CN", { minimumFractionDigits: disp.precision ?? 0, maximumFractionDigits: disp.precision ?? 0 });
+    return { text: (disp.unit ?? "") + (disp.thousand !== false ? s : String(n)), cls: "num" };
+  }
+  if (disp.kind === "percent") return { text: Number(v).toFixed(disp.precision ?? 1) + "%", cls: "num" };
+  return { text: String(v), cls: "" };
+}
+
+/* === Filter rendering === */
+function renderFilterBar() {
+  const bar = document.getElementById("filterBar"); bar.innerHTML = "";
+  for (const f of state.config.filters) {
+    const wrap = document.createElement("div"); wrap.className = "field";
+    const lab = document.createElement("label"); lab.textContent = f.label + (f.required ? " *" : "");
+    wrap.appendChild(lab);
+    if (f.kind === "date_range") {
+      const inp = document.createElement("div"); inp.className = "field-input";
+      const v = state.filterValues[f.code] || {};
+      const fI = document.createElement("input"); fI.type = "date"; fI.value = v.from || "";
+      const tI = document.createElement("input"); tI.type = "date"; tI.value = v.to || "";
+      fI.onchange = () => { v.from = fI.value; state.filterValues[f.code] = { ...v }; };
+      tI.onchange = () => { v.to = tI.value; state.filterValues[f.code] = { ...v }; };
+      inp.append(fI, document.createTextNode("~"), tI);
+      wrap.appendChild(inp);
+    } else if (f.kind === "multi_select") {
+      wrap.appendChild(buildMultiInput(f));
+    }
+    bar.appendChild(wrap);
+  }
+  const acts = document.createElement("div"); acts.className = "actions";
+  const reset = document.createElement("button"); reset.className = "btn ghost"; reset.textContent = "重置";
+  reset.onclick = () => { initDefaults(); renderFilterBar(); refresh(); };
+  const query = document.createElement("button"); query.className = "btn primary"; query.textContent = "查询";
+  query.onclick = () => refresh();
+  acts.append(reset, query); bar.appendChild(acts);
+}
+
+function buildMultiInput(filter) {
+  const inp = document.createElement("div"); inp.className = "field-input"; inp.style.flexWrap = "wrap";
+  const arr = state.filterValues[filter.code] || [];
+  if (arr.length === 0) {
+    const ph = document.createElement("span"); ph.style.color = "var(--muted)"; ph.textContent = "请选择 " + filter.label + " …";
+    inp.appendChild(ph);
+  } else {
+    arr.slice(0, 4).forEach(v => {
+      const c = document.createElement("span"); c.className = "chip";
+      c.innerHTML = `${v.label || v.value} <span class="x" title="移除">×</span>`;
+      c.querySelector(".x").onclick = e => {
+        e.stopPropagation();
+        state.filterValues[filter.code] = (state.filterValues[filter.code] || []).filter(x => (x.value || x) !== (v.value || v));
+        renderFilterBar();
+      };
+      inp.appendChild(c);
+    });
+    if (arr.length > 4) {
+      const m = document.createElement("span"); m.className = "chip"; m.style.background = "#e5e7eb"; m.style.color = "var(--text-soft)";
+      m.textContent = `+${arr.length - 4}`; inp.appendChild(m);
+    }
+  }
+  const car = document.createElement("span"); car.textContent = " ▾"; car.style.color = "var(--muted)"; car.style.marginLeft = "auto";
+  inp.appendChild(car);
+  inp.onclick = e => openMultiPopup(filter, e.currentTarget);
+  return inp;
+}
+
+let popupEl = null;
+function closePopup() { if (popupEl) { popupEl.remove(); popupEl = null; } }
+document.addEventListener("click", e => {
+  if (popupEl && !popupEl.contains(e.target) && !e.target.closest(".field-input")) closePopup();
+});
+
+async function openMultiPopup(filter, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = rect.left + "px"; popupEl.style.top = (rect.bottom + 4) + "px";
+  popupEl.style.minWidth = Math.max(320, rect.width) + "px";
+
+  const head = document.createElement("div"); head.className = "popup-head";
+  const qIn = document.createElement("input"); qIn.className = "q"; qIn.placeholder = "搜索 " + filter.label;
+  head.appendChild(qIn); popupEl.appendChild(head);
+  const body = document.createElement("div"); body.className = "popup-body"; popupEl.appendChild(body);
+  const foot = document.createElement("div"); foot.className = "popup-foot";
+  foot.innerHTML = `<button class="btn sm ghost" id="msClear">清空</button><span style="flex:1"></span><button class="btn sm primary" id="msDone">完成</button>`;
+  popupEl.appendChild(foot);
+  document.body.appendChild(popupEl); qIn.focus();
+
+  popupEl.querySelector("#msClear").onclick = () => { state.filterValues[filter.code] = []; load(qIn.value); };
+  popupEl.querySelector("#msDone").onclick = () => { closePopup(); renderFilterBar(); };
+
+  let timer;
+  qIn.oninput = () => { clearTimeout(timer); timer = setTimeout(() => load(qIn.value), 200); };
+
+  async function load(q) {
+    body.innerHTML = `<div style="padding:14px;color:var(--muted)">加载中…</div>`;
+    const r = await api(filter.source.endpoint + (q ? `?q=${encodeURIComponent(q)}` : ""));
+    body.innerHTML = "";
+    for (const item of r.data.items) {
+      const o = document.createElement("div"); o.className = "opt";
+      const arr = state.filterValues[filter.code] || [];
+      const selected = arr.some(x => (x.value || x) === item.value);
+      if (selected) o.classList.add("sel");
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = selected;
+      cb.style.accentColor = "var(--primary)";
+      cb.onclick = e => {
+        e.stopPropagation();
+        const a = state.filterValues[filter.code] || [];
+        if (cb.checked) a.push({ value: item.value, label: item.label });
+        else a.splice(a.findIndex(x => (x.value || x) === item.value), 1);
+        state.filterValues[filter.code] = a;
+        o.classList.toggle("sel", cb.checked);
+      };
+      const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = item.label;
+      o.append(cb, lbl);
+      o.onclick = e => { if (e.target.tagName !== "INPUT") { cb.checked = !cb.checked; cb.click(); } };
+      body.appendChild(o);
+    }
+  }
+  load("");
+}
+
+/* === Table === */
+function renderTable() {
+  const tree = state.config.columns.summary.header_tree;
+  const { rows: headerRows, maxD } = buildHeaderMatrix(tree);
+  const leafCols = tree.flatMap(leaves);
+  const tbl = document.getElementById("table"); tbl.innerHTML = "";
+
+  // thead
+  const thead = document.createElement("thead");
+  for (let i = 0; i < maxD; i++) {
+    const tr = document.createElement("tr");
+    for (const cell of headerRows[i]) {
+      const th = document.createElement("th");
+      if (cell.kind === "leaf") {
+        th.classList.add("leaf");
+        if (cell.rowSpan > 1) th.rowSpan = cell.rowSpan;
+        if (cell.node.default_pinned === "left") th.classList.add("pin-left");
+        if (cell.node.sortable) th.classList.add("sortable");
+        if (state.sort?.field === cell.node.code) th.classList.add("sorted");
+        const label = document.createElement("span"); label.textContent = cell.node.label;
+        if (cell.node.display?.unit && cell.node.display.unit !== "¥") {
+          const u = document.createElement("span"); u.className = "unit"; u.textContent = "(" + cell.node.display.unit + ")";
+          label.appendChild(u);
+        }
+        const arr = document.createElement("span"); arr.className = "arr";
+        if (cell.node.sortable) arr.textContent = state.sort?.field === cell.node.code ? (state.sort.dir === "asc" ? "▲" : "▼") : "↕";
+        th.append(label, arr);
+        if (cell.node.sortable) th.onclick = () => toggleSort(cell.node.code);
+      } else {
+        th.colSpan = cell.colSpan; th.textContent = cell.node.label; th.style.background = "#e9eef7";
+      }
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+  }
+  tbl.appendChild(thead);
+
+  // tbody
+  const tbody = document.createElement("tbody");
+  for (const r of state.rows) {
+    const trr = document.createElement("tr");
+    for (const c of leafCols) {
+      const td = document.createElement("td");
+      const fm = fmt(r[c.code], c.display);
+      td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
+      if (c.code === "domain_code") td.classList.add("dim");
+      td.textContent = fm.text;
+      if (c.drilldown && c.code !== "domain_code" && r[c.code] != null) {
+        td.classList.add("click");
+        td.onclick = () => openDrilldown(c, r);
+      }
+      trr.appendChild(td);
+    }
+    tbody.appendChild(trr);
+  }
+  tbl.appendChild(tbody);
+
+  // tfoot —— 合计
+  if (state.totalsRow) {
+    const tfoot = document.createElement("tfoot");
+    const tr = document.createElement("tr");
+    for (const c of leafCols) {
+      const td = document.createElement("td");
+      const fm = fmt(state.totalsRow[c.code], c.display);
+      td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
+      if (c.code === "domain_code") td.classList.add("dim");
+      td.textContent = fm.text;
+      tr.appendChild(td);
+    }
+    tfoot.appendChild(tr); tbl.appendChild(tfoot);
+  }
+
+  // meta
+  document.getElementById("rowMeta").innerHTML = `${state.rows.length} 行 · 合计行始终吸底`;
+}
+
+function toggleSort(field) {
+  if (state.sort?.field === field) {
+    if (state.sort.dir === "asc") state.sort.dir = "desc";
+    else state.sort = null;
+  } else state.sort = { field, dir: "desc" };
+  // 客户端排序（小数据）
+  state.rows.sort((a, b) => {
+    if (!state.sort) return 0;
+    const av = a[state.sort.field], bv = b[state.sort.field];
+    return ((av > bv) ? 1 : (av < bv) ? -1 : 0) * (state.sort.dir === "asc" ? 1 : -1);
+  });
+  renderTable();
+}
+
+/* === Refresh === */
+async function refresh() {
+  const v = state.filterValues;
+  const bd = v.business_date || {};
+  const projects = (v.projects || []).map(x => x.value || x);
+  const body = {
+    date_from: bd.from || null,
+    date_to: bd.to || null,
+    project_codes: projects.length ? projects : null,
+    paging: "none"
+  };
+  const r = await api(`/api/reports/${state.config.meta.report_type}/summary`, {
+    method: "POST", body: JSON.stringify(body)
+  });
+  state.rows = r.data.items;
+  state.totalsRow = r.data.extras?.totals_row ?? null;
+  state.total = r.data.total;
+  renderTable();
+}
+
+/* === Drilldown === */
+async function openDrilldown(col, row) {
+  const ref = col.drilldown?.ref; if (!ref) return;
+  const spec = state.config.drilldowns[ref];
+  const v = state.filterValues;
+  const projects = (v.projects || []).map(x => x.value || x);
+  const body = {
+    ref, row: { domain_code: row._domain_code_raw, ...row },
+    filter: { business_date: v.business_date, projects },
+    cell: { column: col.code, value: row[col.code] },
+    paging: { page: 1, page_size: 30 }
+  };
+  document.getElementById("modalMask").classList.add("show");
+  document.getElementById("modalTitle").textContent =
+    interpolate(spec.title, { row: { ...row, domain_code: row.domain_code }, filter: v, cell: { column: col.code } });
+  document.getElementById("modalSub").textContent = spec.endpoint;
+  const r = await api(spec.endpoint, { method: "POST", body: JSON.stringify(body) });
+  renderModal(spec, r.data);
+}
+function interpolate(tpl, ctx) {
+  return tpl.replace(/\{([^}]+)\}/g, (_, path) => {
+    const parts = path.split("."); let v = ctx;
+    for (const p of parts) { v = v?.[p]; if (v == null) return ""; }
+    return v ?? "";
+  });
+}
+function renderModal(spec, data) {
+  const tree = spec.header_tree;
+  const { rows: headerRows, maxD } = buildHeaderMatrix(tree);
+  const lc = tree.flatMap(leaves);
+  const t = document.getElementById("modalTable"); t.innerHTML = "";
+  const thead = document.createElement("thead");
+  for (let i = 0; i < maxD; i++) {
+    const tr = document.createElement("tr");
+    for (const cell of headerRows[i]) {
+      const th = document.createElement("th");
+      if (cell.kind === "leaf") {
+        th.classList.add("leaf"); if (cell.rowSpan > 1) th.rowSpan = cell.rowSpan;
+        if (cell.node.default_pinned === "left") th.classList.add("pin-left");
+        th.textContent = cell.node.label;
+      } else { th.colSpan = cell.colSpan; th.textContent = cell.node.label; }
+      tr.appendChild(th);
+    }
+    thead.appendChild(tr);
+  }
+  t.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const r of data.items) {
+    const trr = document.createElement("tr");
+    for (const c of lc) {
+      const td = document.createElement("td");
+      let v = r[c.code];
+      if (c.code === "is_ai_generated" || c.code === "is_adopted") v = v == null ? "—" : v ? "✓" : "✗";
+      const fm = fmt(v, c.display);
+      td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
+      td.textContent = fm.text;
+      if (c.code === "ref_id" && r.ref_url) {
+        td.innerHTML = `<a href="${r.ref_url}" target="_blank">${r.ref_id}</a>`;
+      }
+      trr.appendChild(td);
+    }
+    tbody.appendChild(trr);
+  }
+  t.appendChild(tbody);
+  document.getElementById("modalPag").innerHTML = `共 ${data.total} 条 · 本页 ${data.items.length} 条`;
+}
+document.getElementById("modalClose").onclick = () => document.getElementById("modalMask").classList.remove("show");
+document.getElementById("modalMask").addEventListener("click", e => { if (e.target.id === "modalMask") document.getElementById("modalMask").classList.remove("show"); });
+
+/* === Init === */
+function initDefaults() {
+  state.filterValues = {};
+  // 默认最近 14 天（与 seed 一致）
+  const today = new Date(); const earlier = new Date(today.getTime() - 13 * 86400_000);
+  const iso = d => d.toISOString().slice(0, 10);
+  state.filterValues.business_date = { from: iso(earlier), to: iso(today) };
+  state.filterValues.projects = []; // 不预选；服务端无项目筛选会聚合所有
+}
+
+document.getElementById("apiInfo").onclick = e => {
+  e.preventDefault();
+  toast(API_BASE ? "API: " + API_BASE : "同源");
+};
+
+(async function init() {
+  try {
+    const cfg = await api("/api/reports/ai_metrics/config");
+    state.config = cfg.data;
+    document.getElementById("title").textContent = state.config.meta.name;
+    document.getElementById("sub").textContent = `config v${state.config.meta.version} · ${state.config.meta.report_type}`;
+    initDefaults();
+    renderFilterBar();
+    await refresh();
+  } catch (e) {
+    document.getElementById("title").textContent = "⚠ 加载失败";
+    document.getElementById("rowMeta").innerHTML = `<span style="color:var(--danger)">${e.message}。检查后端是否启动 (uvicorn app.main:app --port 8001)，或调整 API_BASE 常量。</span>`;
+  }
+})();
+</script>
+</body>
+</html>
