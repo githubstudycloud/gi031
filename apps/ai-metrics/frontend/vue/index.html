@@ -3,14 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>AI 度量看板 · Vue 3 demo</title>
+<title>AI 度量看板 · Vue 3 V2</title>
 <style>
-:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--row-hover:#eff6ff}
+:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--row-hover:#eff6ff;--danger:#dc2626}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","PingFang SC",sans-serif;font-feature-settings:"tnum" 1}
 table{font-variant-numeric:tabular-nums} .app{max-width:1500px;margin:0 auto;padding:16px 20px 24px}
-.topbar{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.topbar h1{font-size:18px;margin:0}.topbar .badge{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.topbar .sub{color:var(--muted);font-size:12px}
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.topbar h1{font-size:18px;margin:0}
+.topbar .badge{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.topbar .grow{flex:1}
+.topbar .sub{color:var(--muted);font-size:12px;margin-right:auto}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;font-size:12px;border:1px solid var(--border-strong);border-radius:999px;background:#fff;cursor:pointer}
+.pill:hover{border-color:var(--primary);color:var(--primary)}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
 .filterbar{padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
 .field{display:flex;flex-direction:column;gap:4px} .field>label{font-size:11px;color:var(--text-soft);font-weight:500}
@@ -21,48 +25,69 @@ table{font-variant-numeric:tabular-nums} .app{max-width:1500px;margin:0 auto;pad
 .chip .x{cursor:pointer;color:var(--muted);padding:0 2px} .chip .x:hover{color:#dc2626}
 .actions{margin-left:auto;display:flex;gap:8px}
 .btn{background:#fff;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
+.btn.sm{padding:3px 8px;font-size:11px}
 .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
-.toolbar{padding:8px 12px;display:flex;gap:12px;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px;font-size:12px;color:var(--text-soft)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.toolbar{padding:8px 12px;display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px;font-size:12px;color:var(--text-soft)}
+.toolbar .grow{flex:1}
 .tableshell{background:var(--panel);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;overflow:hidden}
 .tw{overflow:auto;max-height:64vh}
 table.grid{border-collapse:separate;border-spacing:0;width:100%}
-table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;font-size:12px;position:sticky;z-index:3;white-space:nowrap}
+table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;font-size:12px;position:sticky;z-index:3;white-space:nowrap;user-select:none}
 table.grid thead tr:nth-child(1) th{top:0}
 table.grid thead tr:nth-child(2) th{top:32px}
 table.grid thead th.leaf{background:#e5edf7;border-bottom:2px solid #c7d2fe}
+table.grid thead th.sortable{cursor:pointer}
 table.grid thead th.pin-left,table.grid tbody td.pin-left,table.grid tfoot td.pin-left{position:sticky;left:0;background:inherit;z-index:2;box-shadow:1px 0 0 var(--border)}
 table.grid thead th.pin-left{z-index:4}
+table.grid thead th .arr{margin-left:4px;color:var(--muted);font-size:10px}
+table.grid thead th.sorted .arr{color:var(--primary)}
+table.grid thead th .funnel{margin-left:4px;cursor:pointer;color:var(--muted);font-size:11px}
+table.grid thead th .funnel.active{color:var(--primary)}
 table.grid tbody td{padding:7px 10px;border-bottom:1px solid #eef0f3;white-space:nowrap}
 table.grid tbody tr:nth-child(even) td{background:#fafbfd}
-table.grid tbody tr:hover td{background:var(--row-hover)}
+table.grid tbody tr.fav td{background:#fefce8 !important}
+table.grid tbody tr:hover td{background:var(--row-hover) !important}
 table.grid td.num{text-align:right} table.grid td.empty{color:var(--muted);text-align:center;font-style:italic}
 table.grid td.dim{font-weight:500}
+table.grid td.click{cursor:pointer;color:var(--primary-600);text-decoration:underline dotted}
+table.grid td.click:hover{background:var(--primary-50) !important}
 table.grid tfoot td{padding:8px 10px;border-top:2px solid var(--primary);background:#f3f8ff !important;font-weight:600;position:sticky;bottom:0;z-index:3}
 table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-align:right}
-.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 16px 32px rgba(15,23,42,.18);z-index:100;min-width:280px;max-width:360px}
-.popup-head{padding:8px 10px;border-bottom:1px solid var(--border)} .popup-head input{width:100%;padding:5px 9px;border:1px solid var(--border-strong);border-radius:6px;outline:0}
-.popup-body{max-height:280px;overflow:auto;padding:4px 0}
-.opt{display:flex;gap:8px;padding:5px 10px;cursor:pointer;border-radius:4px;margin:0 4px;align-items:center}
-.opt:hover{background:var(--row-hover)} .opt.sel{background:var(--primary-50);color:var(--primary-600)}
-.popup-foot{padding:6px 10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:11px}
+.star{color:#cbd5e1;font-size:14px;cursor:pointer;user-select:none;display:inline-block;width:18px;text-align:center}
+.star:hover{color:#f59e0b} .star.on{color:#f59e0b}
+.fav-col{text-align:center !important;padding:4px !important;width:32px;min-width:32px}
+.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 16px 32px rgba(15,23,42,.18);z-index:100;min-width:280px;max-width:420px;padding:8px}
+.popup-head{padding:6px 10px;font-size:12px;color:var(--muted);font-weight:500}
+.opt{padding:6px 10px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:8px}
+.opt:hover{background:var(--row-hover)} .opt.sel{background:var(--primary-50);color:var(--primary-600);font-weight:500}
+.opt .meta{font-size:11px;color:var(--muted)}
+.ver-row{display:flex;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)}
+.ver-row .src{font-weight:500;flex:0 0 70px} .ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
+.ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
+.ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:10px;width:96%;max-width:1200px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,.4)}
+.modal-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.modal-head h2{font-size:14px;margin:0;flex:1}
+.modal-body{padding:12px;overflow:auto;flex:1}
+.modal-foot{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-soft)}
 </style>
 </head>
 <body>
 <div id="app" class="app"></div>
 
 <script type="module">
-// 离线部署：从本地 /vendor 加载 (frontend/vendor/ → FastAPI 静态挂载)
-import { createApp, ref, computed, onMounted, h, watchEffect, reactive } from "../vendor/vue.esm-browser.prod.js";
+import { createApp, ref, computed, onMounted, reactive, watch, h } from "../vendor/vue.esm-browser.prod.js";
 
 const API_BASE = (location.protocol === "file:") ? "http://127.0.0.1:8001" : "";
 
-/* ============================================================
-   纯函数（与 React demo 共用同一份逻辑；这里直接 inline）
-   ============================================================ */
+/* ===== Pure functions (shared with React shell) ===== */
 const isLeaf = n => !n.children;
 const depth = n => isLeaf(n) ? 1 : 1 + Math.max(...n.children.map(depth));
 const leaves = n => isLeaf(n) ? [n] : n.children.flatMap(leaves);
 function buildHeaderMatrix(tree) {
+  if (!tree || !tree.length) return { rows: [], maxD: 0 };
   const maxD = Math.max(...tree.map(depth));
   const rows = Array.from({ length: maxD }, () => []);
   const walk = (n, d) => {
@@ -72,6 +97,17 @@ function buildHeaderMatrix(tree) {
   };
   tree.forEach(n => walk(n, 0));
   return { rows, maxD };
+}
+function visibleColumns(tree, rowDim) {
+  const visit = n => {
+    if (!n.children) {
+      if (n.visible_when?.row_dim && !n.visible_when.row_dim.includes(rowDim)) return null;
+      return n;
+    }
+    const kids = n.children.map(visit).filter(Boolean);
+    return kids.length ? { ...n, children: kids } : null;
+  };
+  return tree.map(visit).filter(Boolean);
 }
 function fmt(v, disp) {
   if (v == null || v === "") return { text: "—", cls: "empty" };
@@ -84,121 +120,268 @@ function fmt(v, disp) {
   if (disp.kind === "percent") return { text: Number(v).toFixed(disp.precision ?? 1) + "%", cls: "num" };
   return { text: String(v), cls: "" };
 }
-
 async function api(path, opts = {}) {
   const r = await fetch(API_BASE + path, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
+    ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
   });
   if (!r.ok) throw new Error("HTTP " + r.status + ": " + path);
   return r.json();
 }
 
-/* ============================================================
-   App
-   ============================================================ */
 const App = {
   setup() {
     const config = ref(null);
-    const filterValues = reactive({});
+    const error = ref("");
+    const filterValues = reactive({ business_date: { from: null, to: null }, projects: [] });
+    const rowDim = ref("domain");
+    const rowFilters = ref([]);     // [{column, op, value}]
+    const sort = ref(null);          // {field, dir}
+    const page = ref(1);
+    const pageSize = ref(50);
     const rows = ref([]);
     const totalsRow = ref(null);
-    const loading = ref(false);
-    const error = ref("");
-    const popupKind = ref(null);   // 'projects' | null
-    const popupQ = ref("");
+    const total = ref(0);
+    const validVersions = ref({ count: 0, by_date: {} });
+    const popup = ref(null);   // { kind, anchor, ...payload }
     const projOpts = ref([]);
+    const projQ = ref("");
+    const drill = reactive({ open: false, spec: null, col: null, row: null, page: 1, pageSize: 25, sort: null, rowFilters: [], rows: [], total: 0, title: "" });
 
-    const leafCols = computed(() => config.value ? config.value.columns.summary.header_tree.flatMap(leaves) : []);
     const headerMatrix = computed(() => {
       if (!config.value) return { rows: [], maxD: 0 };
-      return buildHeaderMatrix(config.value.columns.summary.header_tree);
+      const tree = visibleColumns(config.value.columns.summary.header_tree, rowDim.value);
+      return { ...buildHeaderMatrix(tree), tree };
     });
-
-    function chipsOf(code) { return filterValues[code] || []; }
-    function removeChip(code, v) {
-      filterValues[code] = (filterValues[code] || []).filter(x => (x.value || x) !== (v.value || v));
-    }
+    const leafCols = computed(() => headerMatrix.value.tree?.flatMap(leaves) ?? []);
+    const rowFavEnabled = computed(() => config.value?.primary_view?.row_favorite?.enabled);
+    const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
     async function refresh() {
-      loading.value = true;
-      try {
-        const v = filterValues;
-        const bd = v.business_date || {};
-        const r = await api(`/api/reports/ai_metrics/summary`, {
-          method: "POST", body: JSON.stringify({
-            date_from: bd.from || null, date_to: bd.to || null,
-            project_codes: ((v.projects || []).map(x => x.value || x)).length ? (v.projects || []).map(x => x.value || x) : null,
-            paging: "none"
-          })
-        });
-        rows.value = r.data.items;
-        totalsRow.value = r.data.extras?.totals_row ?? null;
-      } finally { loading.value = false; }
+      const sortStr = sort.value ? `${sort.value.field}:${sort.value.dir}` : null;
+      const body = {
+        date_from: filterValues.business_date.from || null,
+        date_to: filterValues.business_date.to || null,
+        project_codes: filterValues.projects.length ? filterValues.projects.map(p => p.value) : null,
+        row_dim: rowDim.value,
+        paging: "server", page: page.value, page_size: pageSize.value,
+        sort: sortStr,
+        row_filter: rowFilters.value.length ? rowFilters.value : null,
+      };
+      const r = await api(`/api/reports/ai_metrics/summary`, {
+        method: "POST", body: JSON.stringify(body)
+      });
+      rows.value = r.data.items;
+      totalsRow.value = r.data.extras?.totals_row ?? null;
+      total.value = r.data.total;
+      validVersions.value = r.data.extras?.valid_versions ?? { count: 0, by_date: {} };
     }
 
-    async function openProjects() {
-      popupKind.value = "projects";
-      const r = await api(`/api/dropdowns/projects?q=${encodeURIComponent(popupQ.value)}`);
-      projOpts.value = r.data.items;
+    function fieldDisplayValue(c, r) {
+      if (c.code === "domain_code") return r.domain_code;
+      if (c.code === "project_code") return r.project_code;
+      return r[c.code];
     }
-    function toggleProject(item) {
-      const cur = filterValues.projects || [];
-      const idx = cur.findIndex(x => (x.value || x) === item.value);
-      if (idx >= 0) cur.splice(idx, 1);
-      else cur.push({ value: item.value, label: item.label });
-      filterValues.projects = [...cur];
+
+    function toggleSort(field) {
+      if (sort.value?.field === field) {
+        if (sort.value.dir === "asc") sort.value = { field, dir: "desc" };
+        else sort.value = null;
+      } else sort.value = { field, dir: "desc" };
+      page.value = 1; refresh();
     }
-    function projectSelected(item) {
-      return (filterValues.projects || []).some(x => (x.value || x) === item.value);
+
+    async function toggleRowFav(r) {
+      const next = !r._row_favorite;
+      await api(`/api/users/me/row_favorites/ai_metrics`, {
+        method: "POST", body: JSON.stringify({ row_key: r._row_key, favorited: next })
+      });
+      r._row_favorite = next; refresh();
     }
+
+    function openRowDim(e) {
+      popup.value = { kind: "rowDim", x: e.target.getBoundingClientRect().right - 280, y: e.target.getBoundingClientRect().bottom + 6 };
+    }
+    function pickRowDim(code) {
+      rowDim.value = code; page.value = 1; popup.value = null; refresh();
+    }
+    async function openVersions(e) {
+      const r = e.target.getBoundingClientRect();
+      popup.value = { kind: "versions", x: r.right - 360, y: r.bottom + 6, items: [], loading: true };
+      const q = new URLSearchParams();
+      if (filterValues.business_date.from) q.set("date_from", filterValues.business_date.from);
+      if (filterValues.business_date.to) q.set("date_to", filterValues.business_date.to);
+      const rs = await api(`/api/reports/ai_metrics/versions?` + q.toString());
+      popup.value = { ...popup.value, items: rs.data.items, loading: false };
+    }
+    async function markVer(v) {
+      const valid = !v.is_valid;
+      await api(`/api/reports/ai_metrics/versions/mark`, {
+        method: "POST", body: JSON.stringify({
+          period_date: v.period_date, source: v.source, version_no: v.version_no,
+          valid, reason: valid ? null : "Vue demo 手工标无效"
+        })
+      });
+      popup.value = null; refresh();
+    }
+    function isVerPicked(v) {
+      return validVersions.value.by_date?.[v.period_date]?.[v.source] === v.version_no;
+    }
+    function openColFilter(col, ev) {
+      const r = ev.target.getBoundingClientRect();
+      const existing = rowFilters.value.find(f => f.column === col.code);
+      popup.value = {
+        kind: "colFilter", x: Math.max(8, r.left - 8), y: r.bottom + 6,
+        col, op: existing?.op || (col.data_type === "string" ? "ilike" : "gte"),
+        val: existing?.value ?? "",
+      };
+    }
+    function applyColFilter() {
+      const p = popup.value; const col = p.col;
+      rowFilters.value = rowFilters.value.filter(f => f.column !== col.code);
+      if (p.val !== "" && p.val != null) {
+        let val = p.val;
+        if (col.data_type !== "string") val = Number(val);
+        rowFilters.value.push({ column: col.code, op: p.op, value: val });
+      }
+      page.value = 1; popup.value = null; refresh();
+    }
+    function clearColFilter() {
+      const col = popup.value.col;
+      rowFilters.value = rowFilters.value.filter(f => f.column !== col.code);
+      page.value = 1; popup.value = null; refresh();
+    }
+    function colHasFilter(code) {
+      return rowFilters.value.some(f => f.column === code);
+    }
+
+    async function openProjects(e) {
+      const r = e.target.getBoundingClientRect();
+      popup.value = { kind: "projects", x: r.left, y: r.bottom + 6 };
+      projQ.value = "";
+      const rs = await api(`/api/dropdowns/projects?q=`);
+      projOpts.value = rs.data.items;
+    }
+    async function searchProjects() {
+      const rs = await api(`/api/dropdowns/projects?q=${encodeURIComponent(projQ.value)}`);
+      projOpts.value = rs.data.items;
+    }
+    function toggleProj(it) {
+      const idx = filterValues.projects.findIndex(x => x.value === it.value);
+      if (idx >= 0) filterValues.projects.splice(idx, 1);
+      else filterValues.projects.push({ value: it.value, label: it.label });
+    }
+    const projSelected = it => filterValues.projects.some(x => x.value === it.value);
 
     function reset() {
       const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
       const iso = d => d.toISOString().slice(0, 10);
-      Object.keys(filterValues).forEach(k => delete filterValues[k]);
-      filterValues.business_date = { from: iso(earlier), to: iso(today) };
+      filterValues.business_date.from = iso(earlier);
+      filterValues.business_date.to = iso(today);
       filterValues.projects = [];
+      rowFilters.value = []; sort.value = null; page.value = 1;
       refresh();
+    }
+
+    async function openDrilldown(col, r) {
+      const spec = config.value.drilldowns?.[col.drilldown?.ref];
+      if (!spec) return;
+      drill.open = true; drill.spec = spec; drill.col = col; drill.row = r;
+      drill.page = 1; drill.pageSize = spec.paging?.default_page_size || 25;
+      drill.sort = spec.default_sort || null; drill.rowFilters = [];
+      drill.title = `${col.label} 明细 — ${r.domain_code} · ${filterValues.business_date.from} ~ ${filterValues.business_date.to}`;
+      await loadDrill();
+    }
+    async function loadDrill() {
+      const body = {
+        ref: drill.spec.ref || "metric_drill",
+        row: { domain_code: drill.row._domain_code_raw, project_code: drill.row._project_code_raw, ...drill.row },
+        filter: {
+          business_date: filterValues.business_date,
+          projects: filterValues.projects.map(p => p.value),
+        },
+        cell: { column: drill.col.code },
+        paging: { page: drill.page, page_size: drill.pageSize },
+        sort: typeof drill.sort === "string" ? drill.sort : (drill.sort ? `${drill.sort.field}:${drill.sort.dir}` : null),
+        row_filter: drill.rowFilters.length ? drill.rowFilters : null,
+      };
+      const r = await api(drill.spec.endpoint, { method: "POST", body: JSON.stringify(body) });
+      drill.rows = r.data.items; drill.total = r.data.total;
+    }
+    function drillToggleSort(field) {
+      const cur = typeof drill.sort === "string" ? drill.sort.split(":") : (drill.sort ? [drill.sort.field, drill.sort.dir] : []);
+      if (cur[0] === field && cur[1] === "desc") drill.sort = `${field}:asc`;
+      else if (cur[0] === field && cur[1] === "asc") drill.sort = null;
+      else drill.sort = `${field}:desc`;
+      drill.page = 1; loadDrill();
+    }
+    function drillOpenColFilter(col, ev) {
+      const r = ev.target.getBoundingClientRect();
+      const existing = drill.rowFilters.find(f => f.column === col.code);
+      popup.value = {
+        kind: "drillColFilter", x: Math.max(8, r.left - 8), y: r.bottom + 6,
+        col, op: existing?.op || (col.data_type === "string" ? "ilike" : "eq"),
+        val: existing?.value ?? "",
+      };
+    }
+    function drillApplyColFilter() {
+      const p = popup.value; const col = p.col;
+      drill.rowFilters = drill.rowFilters.filter(f => f.column !== col.code);
+      if (p.val !== "" && p.val != null) {
+        let val = p.val;
+        if (col.data_type !== "string") val = Number(val);
+        drill.rowFilters.push({ column: col.code, op: p.op, value: val });
+      }
+      drill.page = 1; popup.value = null; loadDrill();
+    }
+    function drillColHasFilter(code) {
+      return drill.rowFilters.some(f => f.column === code);
     }
 
     onMounted(async () => {
       try {
         const cfg = await api(`/api/reports/ai_metrics/config`);
         config.value = cfg.data;
+        rowDim.value = cfg.data.primary_view.default_row_dim || "domain";
         const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
         const iso = d => d.toISOString().slice(0, 10);
-        filterValues.business_date = { from: iso(earlier), to: iso(today) };
-        filterValues.projects = [];
+        filterValues.business_date.from = iso(earlier);
+        filterValues.business_date.to = iso(today);
         await refresh();
       } catch (e) { error.value = e.message; }
     });
 
-    // Click-outside closes popup
-    function onDocClick(e) {
-      if (popupKind.value && !e.target.closest(".popup") && !e.target.closest(".field-input")) {
-        popupKind.value = null;
+    document.addEventListener("click", e => {
+      if (popup.value && !e.target.closest(".popup") && !e.target.closest(".pill")
+          && !e.target.closest(".funnel") && !e.target.closest(".field-input")) {
+        popup.value = null;
       }
-    }
-    document.addEventListener("click", onDocClick);
+    });
+
+    const drillHeader = computed(() => drill.spec ? buildHeaderMatrix(drill.spec.header_tree) : { rows: [], maxD: 0 });
+    const drillLeaves = computed(() => drill.spec ? drill.spec.header_tree.flatMap(leaves) : []);
 
     return {
-      config, filterValues, rows, totalsRow, loading, error,
-      leafCols, headerMatrix, chipsOf, removeChip,
-      refresh, reset, popupKind, popupQ, projOpts, openProjects, toggleProject, projectSelected,
-      fmt
+      config, error, filterValues, rowDim, rowFilters, sort, page, pageSize, rows, totalsRow, total,
+      validVersions, popup, projOpts, projQ, drill,
+      headerMatrix, leafCols, rowFavEnabled, totalPages, drillHeader, drillLeaves,
+      refresh, reset, fmt, fieldDisplayValue, Math,
+      toggleSort, toggleRowFav, openRowDim, pickRowDim, openVersions, markVer, isVerPicked,
+      openColFilter, applyColFilter, clearColFilter, colHasFilter,
+      openProjects, searchProjects, toggleProj, projSelected,
+      openDrilldown, loadDrill, drillToggleSort, drillOpenColFilter, drillApplyColFilter, drillColHasFilter,
     };
   },
 
   template: `
-  <div v-if="error" class="panel" style="padding:16px;color:#dc2626">
-    ⚠ 加载失败：{{ error }}（请确保后端 8001 已启动，或本文件以 http(s) 加载）
-  </div>
+  <div v-if="error" class="panel" style="padding:16px;color:#dc2626">⚠ {{ error }}</div>
   <template v-else-if="config">
     <header class="topbar">
       <h1>{{ config.meta.name }}</h1>
-      <span class="badge">Vue 3 demo</span>
+      <span class="badge">Vue 3 · V2</span>
       <span class="sub">config v{{ config.meta.version }} · {{ config.meta.report_type }}</span>
+      <span class="grow"></span>
+      <span class="pill" @click="openRowDim">📐 {{ config.primary_view.row_dim_options?.find(o=>o.code===rowDim)?.label || rowDim }} ▾</span>
+      <span class="pill" @click="openVersions">🕒 v: {{ validVersions.count }} ▾</span>
     </header>
 
     <div class="panel filterbar">
@@ -213,48 +396,74 @@ const App = {
       <div class="field">
         <label>项目 (多选)</label>
         <div class="field-input" style="flex-wrap:wrap;min-width:260px" @click.stop="openProjects">
-          <span v-if="!chipsOf('projects').length" style="color:var(--muted)">请选择项目 …</span>
-          <span v-for="v in chipsOf('projects').slice(0,4)" :key="v.value || v" class="chip">
-            {{ v.label || v.value }}
-            <span class="x" @click.stop="removeChip('projects', v)">×</span>
+          <template v-if="!filterValues.projects.length">
+            <span style="color:var(--muted)">请选择项目 …</span>
+          </template>
+          <span v-for="v in filterValues.projects.slice(0,4)" :key="v.value" class="chip">
+            {{ v.label }}
+            <span class="x" @click.stop="toggleProj(v)">×</span>
           </span>
-          <span v-if="chipsOf('projects').length > 4" class="chip" style="background:#e5e7eb;color:var(--text-soft)">+{{ chipsOf('projects').length - 4 }}</span>
-          <span style="color:var(--muted);margin-left:auto"> ▾</span>
+          <span v-if="filterValues.projects.length > 4" class="chip" style="background:#e5e7eb;color:var(--text-soft)">+{{ filterValues.projects.length - 4 }}</span>
+          <span style="color:var(--muted);margin-left:auto">▾</span>
         </div>
       </div>
       <div class="actions">
         <button class="btn ghost" @click="reset">重置</button>
-        <button class="btn primary" @click="refresh">查询</button>
+        <button class="btn primary" @click="page=1; refresh()">查询</button>
       </div>
     </div>
 
-    <div class="toolbar"><span>{{ rows.length }} 行 · 合计行始终吸底</span><span style="flex:1"></span><span>Vue 3 + Composition API + ESM CDN</span></div>
+    <div class="toolbar">
+      <span>共 {{ total }} 行 · 当前页 {{ rows.length }} 行
+        <span v-if="rowFilters.length" style="color:var(--primary)">· {{ rowFilters.length }} 列筛选</span>
+      </span>
+      <span class="grow"></span>
+      <template v-if="total > pageSize">
+        <button class="btn sm" :disabled="page<=1" @click="page--; refresh()">‹</button>
+        <span style="min-width:80px;text-align:center">{{ page }} / {{ totalPages }}</span>
+        <button class="btn sm" :disabled="page>=totalPages" @click="page++; refresh()">›</button>
+        <select v-model.number="pageSize" @change="page=1; refresh()" style="border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:11px;">
+          <option :value="10">10 行</option><option :value="25">25 行</option>
+          <option :value="50">50 行</option><option :value="100">100 行</option>
+        </select>
+      </template>
+      <span style="font-size:11px;margin-left:8px;">⭐ 收藏置顶 · 表头 ▽ 列筛 · 数字单元格下钻</span>
+    </div>
+
     <div class="tableshell">
       <div class="tw">
         <table class="grid">
           <thead>
             <tr v-for="(row, ri) in headerMatrix.rows" :key="ri">
-              <th v-for="(cell, ci) in row" :key="ci"
-                  :class="cell.kind === 'leaf' ? ['leaf', cell.node.default_pinned === 'left' ? 'pin-left' : ''] : []"
-                  :rowspan="cell.kind === 'leaf' ? cell.rowSpan : undefined"
-                  :colspan="cell.kind === 'group' ? cell.colSpan : undefined"
-                  :style="cell.kind === 'group' ? 'background:#e9eef7' : ''">
-                {{ cell.node.label }}
-              </th>
+              <th v-if="ri === 0 && rowFavEnabled" :rowspan="headerMatrix.maxD" class="leaf pin-left fav-col" style="width:32px">★</th>
+              <template v-for="(cell, ci) in row" :key="ci">
+                <th v-if="cell.kind === 'leaf'" :class="['leaf', cell.node.default_pinned==='left'?'pin-left':'', cell.node.sortable?'sortable':'', sort?.field===cell.node.code?'sorted':'']"
+                    :rowspan="cell.rowSpan" @click="cell.node.sortable && toggleSort(cell.node.code)">
+                  {{ cell.node.label }}
+                  <span v-if="cell.node.sortable" class="arr">{{ sort?.field===cell.node.code ? (sort.dir==='asc'?'▲':'▼') : '↕' }}</span>
+                  <span v-if="cell.node.row_filterable" :class="['funnel', colHasFilter(cell.node.code)?'active':'']" @click.stop="openColFilter(cell.node, $event)">{{ colHasFilter(cell.node.code) ? '▼' : '▽' }}</span>
+                </th>
+                <th v-else :colspan="cell.colSpan" style="background:#e9eef7">{{ cell.node.label }}</th>
+              </template>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r._domain_code_raw || r.domain_code">
+            <tr v-for="r in rows" :key="(r._project_code_raw||'')+'/'+r._domain_code_raw" :class="r._row_favorite?'fav':''">
+              <td v-if="rowFavEnabled" class="pin-left fav-col">
+                <span :class="['star', r._row_favorite?'on':'']" @click.stop="toggleRowFav(r)">{{ r._row_favorite ? '★' : '☆' }}</span>
+              </td>
               <td v-for="c in leafCols" :key="c.code"
-                  :class="[fmt(r[c.code], c.display).cls, c.default_pinned === 'left' ? 'pin-left' : '', c.code === 'domain_code' ? 'dim' : '']">
-                {{ fmt(r[c.code], c.display).text }}
+                  :class="[fmt(fieldDisplayValue(c,r), c.display).cls, c.default_pinned==='left'?'pin-left':'', (c.code==='domain_code'||c.code==='project_code')?'dim':'', c.drilldown && c.code!=='domain_code' && c.code!=='project_code' && r[c.code]!=null ? 'click' : '']"
+                  @click="c.drilldown && c.code!=='domain_code' && c.code!=='project_code' && r[c.code]!=null ? openDrilldown(c, r) : null">
+                {{ fmt(fieldDisplayValue(c, r), c.display).text }}
               </td>
             </tr>
           </tbody>
           <tfoot v-if="totalsRow">
             <tr>
+              <td v-if="rowFavEnabled" class="pin-left fav-col"></td>
               <td v-for="c in leafCols" :key="c.code"
-                  :class="[fmt(totalsRow[c.code], c.display).cls, c.default_pinned === 'left' ? 'pin-left' : '', c.code === 'domain_code' ? 'dim' : '']">
+                  :class="[fmt(totalsRow[c.code], c.display).cls, c.default_pinned==='left'?'pin-left':'', (c.code==='domain_code'||c.code==='project_code')?'dim':'']">
                 {{ fmt(totalsRow[c.code], c.display).text }}
               </td>
             </tr>
@@ -263,28 +472,148 @@ const App = {
       </div>
     </div>
 
-    <!-- Project multi-select popup -->
-    <div v-if="popupKind === 'projects'" class="popup" style="left:20px;top:230px;">
-      <div class="popup-head">
-        <input v-model="popupQ" @input="openProjects" placeholder="搜索项目…" />
+    <!-- ROW DIM popup -->
+    <div v-if="popup?.kind === 'rowDim'" class="popup" :style="{left: popup.x+'px', top: popup.y+'px'}">
+      <div class="popup-head">行维度</div>
+      <div v-for="o in config.primary_view.row_dim_options" :key="o.code"
+           :class="['opt', o.code===rowDim?'sel':'']" @click="pickRowDim(o.code)">
+        <span style="flex:1">{{ o.label }}</span>
+        <span class="meta">约 {{ o.row_count_hint }} 行</span>
       </div>
-      <div class="popup-body">
-        <div v-for="it in projOpts" :key="it.value" class="opt"
-             :class="{ sel: projectSelected(it) }" @click.stop="toggleProject(it)">
-          <input type="checkbox" :checked="projectSelected(it)" />
+    </div>
+
+    <!-- VERSIONS popup -->
+    <div v-if="popup?.kind === 'versions'" class="popup" :style="{left: popup.x+'px', top: popup.y+'px', minWidth:'380px', maxHeight:'440px', overflow:'auto'}">
+      <div class="popup-head">数据版本 (默认 latest valid)</div>
+      <div v-if="popup.loading" style="padding:14px;color:var(--muted)">加载中…</div>
+      <div v-else>
+        <div v-for="v in popup.items" :key="v.period_date+'/'+v.source+'/'+v.version_no"
+             :class="['ver-row', v.is_valid?'':'invalid']">
+          <span style="flex:0 0 86px">{{ v.period_date }}</span>
+          <span class="src">{{ v.source }}</span>
+          <span class="vno">v{{ v.version_no }}</span>
+          <span style="flex:1;font-size:11px;color:var(--muted)">{{ isVerPicked(v) ? '✓ 当前查询使用' : '' }}</span>
+          <span class="act" @click.stop="markVer(v)">{{ v.is_valid ? '标无效' : '恢复' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- COL FILTER popup (summary) -->
+    <div v-if="popup?.kind === 'colFilter'" class="popup" :style="{left:popup.x+'px', top:popup.y+'px'}">
+      <h4 style="margin:0 0 8px;font-size:13px">{{ popup.col.label }} · 列筛选</h4>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <select v-model="popup.op" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px">
+          <template v-if="popup.col.data_type === 'string'">
+            <option value="ilike">包含</option><option value="eq">等于</option><option value="ne">不等</option>
+          </template>
+          <template v-else>
+            <option value="gte">≥</option><option value="gt">&gt;</option><option value="lte">≤</option><option value="lt">&lt;</option><option value="eq">=</option><option value="ne">≠</option>
+          </template>
+        </select>
+        <input v-model="popup.val" :placeholder="popup.col.data_type==='string'?'例：core':'例：5000'"
+               style="flex:1;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0" />
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sm ghost" @click="clearColFilter">清除</button>
+        <span style="flex:1"></span>
+        <button class="btn sm primary" @click="applyColFilter">应用</button>
+      </div>
+    </div>
+
+    <!-- PROJECTS popup -->
+    <div v-if="popup?.kind === 'projects'" class="popup" :style="{left:popup.x+'px', top:popup.y+'px', minWidth:'320px'}">
+      <input v-model="projQ" @input="searchProjects" placeholder="搜索项目…"
+             style="width:100%;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;margin-bottom:6px" />
+      <div style="max-height:280px;overflow:auto">
+        <div v-for="it in projOpts" :key="it.value" :class="['opt', projSelected(it)?'sel':'']" @click.stop="toggleProj(it)">
+          <input type="checkbox" :checked="projSelected(it)" @click.stop />
           <span style="flex:1">{{ it.label }}</span>
         </div>
       </div>
-      <div class="popup-foot">
+      <div style="display:flex;gap:6px;border-top:1px solid var(--border);padding-top:6px;margin-top:6px">
         <span style="flex:1"></span>
-        <button class="btn" style="font-size:11px;padding:3px 8px" @click="popupKind=null">完成</button>
+        <button class="btn sm" @click="popup=null">完成</button>
+      </div>
+    </div>
+
+    <!-- DRILLDOWN modal -->
+    <div v-if="drill.open" class="modal-mask" @click.self="drill.open=false">
+      <div class="modal">
+        <div class="modal-head">
+          <h2>{{ drill.title }}</h2>
+          <button class="btn ghost" style="width:28px;height:28px;padding:0" @click="drill.open=false">✕</button>
+        </div>
+        <div class="modal-body">
+          <table class="grid">
+            <thead>
+              <tr v-for="(row, ri) in drillHeader.rows" :key="ri">
+                <template v-for="(cell, ci) in row" :key="ci">
+                  <th v-if="cell.kind === 'leaf'" :class="['leaf', cell.node.default_pinned==='left'?'pin-left':'', cell.node.sortable?'sortable':'']"
+                      :rowspan="cell.rowSpan" @click="cell.node.sortable && drillToggleSort(cell.node.code)">
+                    {{ cell.node.label }}
+                    <span v-if="cell.node.sortable" class="arr">↕</span>
+                    <span v-if="cell.node.row_filterable" :class="['funnel', drillColHasFilter(cell.node.code)?'active':'']" @click.stop="drillOpenColFilter(cell.node, $event)">{{ drillColHasFilter(cell.node.code) ? '▼' : '▽' }}</span>
+                  </th>
+                  <th v-else :colspan="cell.colSpan" style="background:#e9eef7">{{ cell.node.label }}</th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in drill.rows" :key="d.ref_id">
+                <td v-for="c in drillLeaves" :key="c.code"
+                    :class="[fmt(c.code==='is_ai_generated' || c.code==='is_adopted' ? (d[c.code]==null?'—':d[c.code]?'✓':'✗') : d[c.code], c.display).cls, c.default_pinned==='left'?'pin-left':'']">
+                  <a v-if="c.code==='ref_id' && d.ref_url" :href="d.ref_url" target="_blank">{{ d.ref_id }}</a>
+                  <template v-else>{{ fmt(c.code==='is_ai_generated' || c.code==='is_adopted' ? (d[c.code]==null?'—':d[c.code]?'✓':'✗') : d[c.code], c.display).text }}</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-foot">
+          <span>共 {{ drill.total }} 条 · 本页 {{ drill.rows.length }} 条
+            <span v-if="drill.rowFilters.length" style="color:var(--primary)">· {{ drill.rowFilters.length }} 列筛选</span>
+          </span>
+          <span style="flex:1"></span>
+          <button class="btn sm" :disabled="drill.page<=1" @click="drill.page--; loadDrill()">‹</button>
+          <span>{{ drill.page }} / {{ Math.max(1, Math.ceil(drill.total/drill.pageSize)) }}</span>
+          <button class="btn sm" :disabled="drill.page >= Math.ceil(drill.total/drill.pageSize)" @click="drill.page++; loadDrill()">›</button>
+          <select v-model.number="drill.pageSize" @change="drill.page=1; loadDrill()"
+                  style="border:1px solid var(--border-strong);border-radius:4px;padding:2px 6px">
+            <option :value="10">10</option><option :value="25">25</option><option :value="50">50</option><option :value="100">100</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- drill col filter popup -->
+    <div v-if="popup?.kind === 'drillColFilter'" class="popup" :style="{left:popup.x+'px', top:popup.y+'px'}">
+      <h4 style="margin:0 0 8px;font-size:13px">{{ popup.col.label }} · 列筛选</h4>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <select v-model="popup.op" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px">
+          <template v-if="popup.col.data_type === 'string'">
+            <option value="ilike">包含</option><option value="eq">等于</option><option value="ne">不等</option>
+          </template>
+          <template v-else>
+            <option value="eq">=</option><option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="ne">≠</option>
+          </template>
+        </select>
+        <input v-model="popup.val" :placeholder="popup.col.data_type==='string'?'例：core':'例：1'"
+               style="flex:1;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0" />
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sm ghost" @click="(()=>{drill.rowFilters=drill.rowFilters.filter(f=>f.column!==popup.col.code); drill.page=1; popup=null; loadDrill();})()">清除</button>
+        <span style="flex:1"></span>
+        <button class="btn sm primary" @click="drillApplyColFilter">应用</button>
       </div>
     </div>
   </template>
   `
 };
 
-createApp(App).mount("#app");
+// 暴露给模板使用
+const app = createApp(App);
+app.config.globalProperties.buildHeaderMatrix = buildHeaderMatrix;
+app.mount("#app");
 </script>
 </body>
 </html>

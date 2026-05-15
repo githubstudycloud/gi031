@@ -3,14 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>AI 度量看板 · React 18 demo</title>
+<title>AI 度量看板 · React 18 V2</title>
 <style>
-:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--row-hover:#eff6ff}
+:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--row-hover:#eff6ff;--danger:#dc2626}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","PingFang SC",sans-serif;font-feature-settings:"tnum" 1}
 table{font-variant-numeric:tabular-nums} .app{max-width:1500px;margin:0 auto;padding:16px 20px 24px}
-.topbar{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.topbar h1{font-size:18px;margin:0} .topbar .badge{background:#dbeafe;color:var(--primary-600);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.topbar .sub{color:var(--muted);font-size:12px}
+.topbar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.topbar h1{font-size:18px;margin:0}
+.topbar .badge{background:#dbeafe;color:var(--primary-600);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.topbar .grow{flex:1}
+.topbar .sub{color:var(--muted);font-size:12px;margin-right:auto}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;font-size:12px;border:1px solid var(--border-strong);border-radius:999px;background:#fff;cursor:pointer}
+.pill:hover{border-color:var(--primary);color:var(--primary)}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
 .filterbar{padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
 .field{display:flex;flex-direction:column;gap:4px} .field>label{font-size:11px;color:var(--text-soft);font-weight:500}
@@ -21,50 +25,74 @@ table{font-variant-numeric:tabular-nums} .app{max-width:1500px;margin:0 auto;pad
 .chip .x{cursor:pointer;color:var(--muted);padding:0 2px} .chip .x:hover{color:#dc2626}
 .actions{margin-left:auto;display:flex;gap:8px}
 .btn{background:#fff;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
-.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff} .btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
-.toolbar{padding:8px 12px;display:flex;gap:12px;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px;font-size:12px;color:var(--text-soft)}
+.btn.sm{padding:3px 8px;font-size:11px}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.toolbar{padding:8px 12px;display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px;font-size:12px;color:var(--text-soft)}
+.toolbar .grow{flex:1}
 .tableshell{background:var(--panel);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;overflow:hidden}
 .tw{overflow:auto;max-height:64vh}
 table.grid{border-collapse:separate;border-spacing:0;width:100%}
-table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;font-size:12px;position:sticky;z-index:3;white-space:nowrap}
+table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;font-size:12px;position:sticky;z-index:3;white-space:nowrap;user-select:none}
 table.grid thead tr:nth-child(1) th{top:0}
 table.grid thead tr:nth-child(2) th{top:32px}
 table.grid thead th.leaf{background:#e5edf7;border-bottom:2px solid #c7d2fe}
+table.grid thead th.sortable{cursor:pointer}
 table.grid thead th.pin-left,table.grid tbody td.pin-left,table.grid tfoot td.pin-left{position:sticky;left:0;background:inherit;z-index:2;box-shadow:1px 0 0 var(--border)}
 table.grid thead th.pin-left{z-index:4}
+table.grid thead th .arr{margin-left:4px;color:var(--muted);font-size:10px}
+table.grid thead th.sorted .arr{color:var(--primary)}
+table.grid thead th .funnel{margin-left:4px;cursor:pointer;color:var(--muted);font-size:11px}
+table.grid thead th .funnel.active{color:var(--primary)}
 table.grid tbody td{padding:7px 10px;border-bottom:1px solid #eef0f3;white-space:nowrap}
 table.grid tbody tr:nth-child(even) td{background:#fafbfd}
-table.grid tbody tr:hover td{background:var(--row-hover)}
+table.grid tbody tr.fav td{background:#fefce8 !important}
+table.grid tbody tr:hover td{background:var(--row-hover) !important}
 table.grid td.num{text-align:right} table.grid td.empty{color:var(--muted);text-align:center;font-style:italic}
 table.grid td.dim{font-weight:500}
+table.grid td.click{cursor:pointer;color:var(--primary-600);text-decoration:underline dotted}
+table.grid td.click:hover{background:var(--primary-50) !important}
 table.grid tfoot td{padding:8px 10px;border-top:2px solid var(--primary);background:#f3f8ff !important;font-weight:600;position:sticky;bottom:0;z-index:3}
 table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-align:right}
-.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 16px 32px rgba(15,23,42,.18);z-index:100;min-width:280px;max-width:360px}
-.popup-head{padding:8px 10px;border-bottom:1px solid var(--border)} .popup-head input{width:100%;padding:5px 9px;border:1px solid var(--border-strong);border-radius:6px;outline:0}
-.popup-body{max-height:280px;overflow:auto;padding:4px 0}
-.opt{display:flex;gap:8px;padding:5px 10px;cursor:pointer;border-radius:4px;margin:0 4px;align-items:center}
-.opt:hover{background:var(--row-hover)} .opt.sel{background:var(--primary-50);color:var(--primary-600)}
-.popup-foot{padding:6px 10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:11px}
+.star{color:#cbd5e1;font-size:14px;cursor:pointer;user-select:none;display:inline-block;width:18px;text-align:center}
+.star:hover{color:#f59e0b} .star.on{color:#f59e0b}
+.fav-col{text-align:center !important;padding:4px !important;width:32px;min-width:32px}
+.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 16px 32px rgba(15,23,42,.18);z-index:100;min-width:280px;max-width:420px;padding:8px}
+.popup-head{padding:6px 10px;font-size:12px;color:var(--muted);font-weight:500}
+.opt{padding:6px 10px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:8px}
+.opt:hover{background:var(--row-hover)} .opt.sel{background:var(--primary-50);color:var(--primary-600);font-weight:500}
+.opt .meta{font-size:11px;color:var(--muted)}
+.ver-row{display:flex;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)}
+.ver-row .src{font-weight:500;flex:0 0 70px} .ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
+.ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
+.ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:10px;width:96%;max-width:1200px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,.4)}
+.modal-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.modal-head h2{font-size:14px;margin:0;flex:1}
+.modal-body{padding:12px;overflow:auto;flex:1}
+.modal-foot{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-soft)}
 </style>
 </head>
 <body>
 <div id="root"></div>
 
-<!-- 离线部署：从本地 /vendor 加载 (frontend/vendor/ → FastAPI 静态挂载) -->
+<!-- 离线 / 内网 vendor JS -->
 <script src="../vendor/react.production.min.js"></script>
 <script src="../vendor/react-dom.production.min.js"></script>
 <script type="module">
 import htm from "../vendor/htm.module.js";
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const html = htm.bind(React.createElement);
 
 const API_BASE = (location.protocol === "file:") ? "http://127.0.0.1:8001" : "";
 
-/* === Shared pure functions (与 Vue demo 共享同一份逻辑) === */
+/* ===== Pure functions (与 Vue shell 共享同款逻辑) ===== */
 const isLeaf = n => !n.children;
 const depth  = n => isLeaf(n) ? 1 : 1 + Math.max(...n.children.map(depth));
 const leaves = n => isLeaf(n) ? [n] : n.children.flatMap(leaves);
 function buildHeaderMatrix(tree) {
+  if (!tree || !tree.length) return { rows: [], maxD: 0 };
   const maxD = Math.max(...tree.map(depth));
   const rows = Array.from({ length: maxD }, () => []);
   const walk = (n, d) => {
@@ -74,6 +102,17 @@ function buildHeaderMatrix(tree) {
   };
   tree.forEach(n => walk(n, 0));
   return { rows, maxD };
+}
+function visibleColumns(tree, rowDim) {
+  const visit = n => {
+    if (!n.children) {
+      if (n.visible_when?.row_dim && !n.visible_when.row_dim.includes(rowDim)) return null;
+      return n;
+    }
+    const kids = n.children.map(visit).filter(Boolean);
+    return kids.length ? { ...n, children: kids } : null;
+  };
+  return tree.map(visit).filter(Boolean);
 }
 function fmt(v, disp) {
   if (v == null || v === "") return { text: "—", cls: "empty" };
@@ -92,96 +131,261 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
+function classOf(...xs) { return xs.filter(Boolean).join(" "); }
+function fieldDisplayValue(c, r) {
+  if (c.code === "domain_code") return r.domain_code;
+  if (c.code === "project_code") return r.project_code;
+  return r[c.code];
+}
+
 function App() {
   const [config, setConfig] = useState(null);
-  const [filterValues, setFilterValues] = useState({});
+  const [error, setError] = useState("");
+  const [filterValues, setFilterValues] = useState({ business_date: { from: "", to: "" }, projects: [] });
+  const [rowDim, setRowDim] = useState("domain");
+  const [rowFilters, setRowFilters] = useState([]);
+  const [sort, setSort] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [rows, setRows] = useState([]);
   const [totalsRow, setTotalsRow] = useState(null);
-  const [error, setError] = useState("");
-  const [popup, setPopup] = useState(null);      // 'projects' | null
+  const [total, setTotal] = useState(0);
+  const [validVersions, setValidVersions] = useState({ count: 0, by_date: {} });
+  const [popup, setPopup] = useState(null);
   const [projOpts, setProjOpts] = useState([]);
-  const [popupQ, setPopupQ] = useState("");
+  const [projQ, setProjQ] = useState("");
+  const [drill, setDrill] = useState({ open: false });
 
-  const headerMatrix = useMemo(
-    () => config ? buildHeaderMatrix(config.columns.summary.header_tree) : { rows: [], maxD: 0 },
-    [config]
+  const filteredTree = useMemo(
+    () => config ? visibleColumns(config.columns.summary.header_tree, rowDim) : [],
+    [config, rowDim]
   );
-  const leafCols = useMemo(
-    () => config ? config.columns.summary.header_tree.flatMap(leaves) : [],
-    [config]
-  );
+  const headerMatrix = useMemo(() => buildHeaderMatrix(filteredTree), [filteredTree]);
+  const leafCols = useMemo(() => filteredTree.flatMap(leaves), [filteredTree]);
+  const rowFavEnabled = config?.primary_view?.row_favorite?.enabled;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const refresh = useCallback(async () => {
-    const v = filterValues, bd = v.business_date || {};
-    const projects = (v.projects || []).map(x => x.value || x);
-    const r = await api(`/api/reports/ai_metrics/summary`, {
-      method: "POST", body: JSON.stringify({
-        date_from: bd.from || null, date_to: bd.to || null,
-        project_codes: projects.length ? projects : null, paging: "none"
-      })
-    });
+    const sortStr = sort ? `${sort.field}:${sort.dir}` : null;
+    const body = {
+      date_from: filterValues.business_date.from || null,
+      date_to: filterValues.business_date.to || null,
+      project_codes: filterValues.projects.length ? filterValues.projects.map(p => p.value) : null,
+      row_dim: rowDim,
+      paging: "server", page, page_size: pageSize,
+      sort: sortStr,
+      row_filter: rowFilters.length ? rowFilters : null,
+    };
+    const r = await api(`/api/reports/ai_metrics/summary`, { method: "POST", body: JSON.stringify(body) });
     setRows(r.data.items);
     setTotalsRow(r.data.extras?.totals_row ?? null);
-  }, [filterValues]);
-
-  const openProjects = useCallback(async (q) => {
-    setPopup("projects");
-    const r = await api(`/api/dropdowns/projects?q=${encodeURIComponent(q ?? popupQ)}`);
-    setProjOpts(r.data.items);
-  }, [popupQ]);
-
-  const toggleProject = (item) => {
-    setFilterValues(prev => {
-      const cur = prev.projects || [];
-      const idx = cur.findIndex(x => (x.value || x) === item.value);
-      const next = idx >= 0 ? cur.filter((_, i) => i !== idx) : [...cur, { value: item.value, label: item.label }];
-      return { ...prev, projects: next };
-    });
-  };
-  const projectSelected = (item) => (filterValues.projects || []).some(x => (x.value || x) === item.value);
-
-  const removeChip = (code, v) => {
-    setFilterValues(prev => ({ ...prev, [code]: (prev[code] || []).filter(x => (x.value || x) !== (v.value || v)) }));
-  };
-
-  const reset = () => {
-    const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
-    const iso = d => d.toISOString().slice(0, 10);
-    setFilterValues({ business_date: { from: iso(earlier), to: iso(today) }, projects: [] });
-  };
+    setTotal(r.data.total);
+    setValidVersions(r.data.extras?.valid_versions ?? { count: 0, by_date: {} });
+  }, [filterValues, rowDim, rowFilters, sort, page, pageSize]);
 
   useEffect(() => {
     (async () => {
       try {
         const cfg = await api(`/api/reports/ai_metrics/config`);
         setConfig(cfg.data);
+        setRowDim(cfg.data.primary_view.default_row_dim || "domain");
         const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
         const iso = d => d.toISOString().slice(0, 10);
         setFilterValues({ business_date: { from: iso(earlier), to: iso(today) }, projects: [] });
       } catch (e) { setError(e.message); }
     })();
   }, []);
+  useEffect(() => { if (config) refresh(); }, [config, refresh]);
 
-  useEffect(() => { if (config) refresh(); }, [config]);
-
-  // close popup on outside click
+  // close popup on outside
   useEffect(() => {
-    const onClick = (e) => {
-      if (popup && !e.target.closest(".popup") && !e.target.closest(".field-input")) setPopup(null);
+    const onC = (e) => {
+      if (popup && !e.target.closest(".popup") && !e.target.closest(".pill") && !e.target.closest(".funnel") && !e.target.closest(".field-input")) setPopup(null);
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    document.addEventListener("click", onC);
+    return () => document.removeEventListener("click", onC);
   }, [popup]);
 
-  if (error) return html`<div class="panel" style=${{padding:"16px",color:"#dc2626"}}>⚠ 加载失败：${error}（请确保后端 8001 已启动）</div>`;
+  function toggleSort(field) {
+    if (sort?.field === field) {
+      if (sort.dir === "asc") setSort({ field, dir: "desc" });
+      else setSort(null);
+    } else setSort({ field, dir: "desc" });
+    setPage(1);
+  }
+  async function toggleRowFav(r) {
+    const next = !r._row_favorite;
+    await api(`/api/users/me/row_favorites/ai_metrics`, {
+      method: "POST", body: JSON.stringify({ row_key: r._row_key, favorited: next })
+    });
+    refresh();
+  }
+  function openRowDim(ev) {
+    const r = ev.target.getBoundingClientRect();
+    setPopup({ kind: "rowDim", x: r.right - 280, y: r.bottom + 6 });
+  }
+  function pickRowDim(code) { setRowDim(code); setPage(1); setPopup(null); }
+
+  async function openVersions(ev) {
+    const r = ev.target.getBoundingClientRect();
+    setPopup({ kind: "versions", x: r.right - 360, y: r.bottom + 6, items: [], loading: true });
+    const q = new URLSearchParams();
+    if (filterValues.business_date.from) q.set("date_from", filterValues.business_date.from);
+    if (filterValues.business_date.to) q.set("date_to", filterValues.business_date.to);
+    const rs = await api(`/api/reports/ai_metrics/versions?` + q.toString());
+    setPopup(p => p && p.kind === "versions" ? { ...p, items: rs.data.items, loading: false } : p);
+  }
+  async function markVer(v) {
+    const valid = !v.is_valid;
+    await api(`/api/reports/ai_metrics/versions/mark`, {
+      method: "POST", body: JSON.stringify({
+        period_date: v.period_date, source: v.source, version_no: v.version_no,
+        valid, reason: valid ? null : "React demo 手工标无效"
+      })
+    });
+    setPopup(null); refresh();
+  }
+  function isVerPicked(v) { return validVersions.by_date?.[v.period_date]?.[v.source] === v.version_no; }
+
+  function openColFilter(col, ev) {
+    const r = ev.target.getBoundingClientRect();
+    const existing = rowFilters.find(f => f.column === col.code);
+    setPopup({
+      kind: "colFilter", x: Math.max(8, r.left - 8), y: r.bottom + 6,
+      col, op: existing?.op || (col.data_type === "string" ? "ilike" : "gte"),
+      val: existing?.value ?? "",
+    });
+  }
+  function applyColFilter() {
+    const p = popup; const col = p.col;
+    let next = rowFilters.filter(f => f.column !== col.code);
+    if (p.val !== "" && p.val != null) {
+      let val = p.val;
+      if (col.data_type !== "string") val = Number(val);
+      next = [...next, { column: col.code, op: p.op, value: val }];
+    }
+    setRowFilters(next); setPage(1); setPopup(null);
+  }
+  function clearColFilter() {
+    setRowFilters(rowFilters.filter(f => f.column !== popup.col.code));
+    setPage(1); setPopup(null);
+  }
+  const colHasFilter = code => rowFilters.some(f => f.column === code);
+
+  async function openProjects(ev) {
+    const r = ev.target.getBoundingClientRect();
+    setPopup({ kind: "projects", x: r.left, y: r.bottom + 6 });
+    setProjQ("");
+    const rs = await api(`/api/dropdowns/projects?q=`);
+    setProjOpts(rs.data.items);
+  }
+  async function searchProjects(v) {
+    setProjQ(v);
+    const rs = await api(`/api/dropdowns/projects?q=${encodeURIComponent(v)}`);
+    setProjOpts(rs.data.items);
+  }
+  function toggleProj(it) {
+    const idx = filterValues.projects.findIndex(x => x.value === it.value);
+    const next = idx >= 0
+      ? filterValues.projects.filter((_, i) => i !== idx)
+      : [...filterValues.projects, { value: it.value, label: it.label }];
+    setFilterValues({ ...filterValues, projects: next });
+  }
+  const projSelected = it => filterValues.projects.some(x => x.value === it.value);
+
+  function reset() {
+    const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
+    const iso = d => d.toISOString().slice(0, 10);
+    setFilterValues({ business_date: { from: iso(earlier), to: iso(today) }, projects: [] });
+    setRowFilters([]); setSort(null); setPage(1);
+  }
+
+  async function openDrilldown(col, r) {
+    const spec = config.drilldowns?.[col.drilldown?.ref];
+    if (!spec) return;
+    setDrill({
+      open: true, spec, col, row: r,
+      page: 1, pageSize: spec.paging?.default_page_size || 25,
+      sort: spec.default_sort || null, rowFilters: [],
+      title: `${col.label} 明细 — ${r.domain_code} · ${filterValues.business_date.from} ~ ${filterValues.business_date.to}`,
+      rows: [], total: 0,
+    });
+  }
+  const drillRef = useRef(null);
+  useEffect(() => {
+    if (drill.open) loadDrill();
+  }, [drill.open, drill.page, drill.pageSize, drill.sort, drill.rowFilters]);
+
+  async function loadDrill() {
+    const d = drill; if (!d?.spec) return;
+    const body = {
+      ref: d.spec.ref || "metric_drill",
+      row: { domain_code: d.row._domain_code_raw, project_code: d.row._project_code_raw, ...d.row },
+      filter: {
+        business_date: filterValues.business_date,
+        projects: filterValues.projects.map(p => p.value),
+      },
+      cell: { column: d.col.code },
+      paging: { page: d.page, page_size: d.pageSize },
+      sort: typeof d.sort === "string" ? d.sort : (d.sort ? `${d.sort.field}:${d.sort.dir}` : null),
+      row_filter: d.rowFilters.length ? d.rowFilters : null,
+    };
+    const r = await api(d.spec.endpoint, { method: "POST", body: JSON.stringify(body) });
+    setDrill(prev => ({ ...prev, rows: r.data.items, total: r.data.total }));
+  }
+  function drillToggleSort(field) {
+    setDrill(d => {
+      const cur = typeof d.sort === "string" ? d.sort.split(":") : (d.sort ? [d.sort.field, d.sort.dir] : []);
+      let next;
+      if (cur[0] === field && cur[1] === "desc") next = `${field}:asc`;
+      else if (cur[0] === field && cur[1] === "asc") next = null;
+      else next = `${field}:desc`;
+      return { ...d, sort: next, page: 1 };
+    });
+  }
+  function drillOpenColFilter(col, ev) {
+    const r = ev.target.getBoundingClientRect();
+    const existing = drill.rowFilters.find(f => f.column === col.code);
+    setPopup({
+      kind: "drillColFilter", x: Math.max(8, r.left - 8), y: r.bottom + 6,
+      col, op: existing?.op || (col.data_type === "string" ? "ilike" : "eq"),
+      val: existing?.value ?? "",
+    });
+  }
+  function drillApplyColFilter() {
+    const p = popup; const col = p.col;
+    let next = drill.rowFilters.filter(f => f.column !== col.code);
+    if (p.val !== "" && p.val != null) {
+      let val = p.val;
+      if (col.data_type !== "string") val = Number(val);
+      next = [...next, { column: col.code, op: p.op, value: val }];
+    }
+    setDrill(d => ({ ...d, rowFilters: next, page: 1 }));
+    setPopup(null);
+  }
+  function drillClearColFilter() {
+    const col = popup.col;
+    setDrill(d => ({ ...d, rowFilters: d.rowFilters.filter(f => f.column !== col.code), page: 1 }));
+    setPopup(null);
+  }
+  const drillColHasFilter = code => drill.rowFilters?.some(f => f.column === code);
+  const drillLeaves = useMemo(() => drill.spec?.header_tree?.flatMap(leaves) ?? [], [drill.spec]);
+  const drillHeader = useMemo(() => drill.spec ? buildHeaderMatrix(drill.spec.header_tree) : { rows: [], maxD: 0 }, [drill.spec]);
+
+  if (error) return html`<div class="panel" style=${{padding:"16px",color:"#dc2626"}}>⚠ ${error}</div>`;
   if (!config) return html`<div class="panel" style=${{padding:"16px"}}>加载中…</div>`;
 
-  const bd = filterValues.business_date || {};
+  const bd = filterValues.business_date;
+  const rowDimLabel = config.primary_view.row_dim_options?.find(o => o.code === rowDim)?.label || rowDim;
+
   return html`<div class="app">
     <header class="topbar">
       <h1>${config.meta.name}</h1>
-      <span class="badge">React 18 demo</span>
+      <span class="badge">React 18 · V2</span>
       <span class="sub">config v${config.meta.version} · ${config.meta.report_type}</span>
+      <span class="grow"></span>
+      <span class="pill" onClick=${openRowDim}>📐 ${rowDimLabel} ▾</span>
+      <span class="pill" onClick=${openVersions}>🕒 v: ${validVersions.count} ▾</span>
     </header>
 
     <div class="panel filterbar">
@@ -189,43 +393,70 @@ function App() {
         <label>时间段</label>
         <div class="field-input">
           <input type="date" value=${bd.from || ""}
-                 onChange=${e => setFilterValues(p => ({...p, business_date: {...(p.business_date||{}), from: e.target.value}}))} />
+                 onChange=${e => setFilterValues(p => ({...p, business_date:{...p.business_date, from:e.target.value}}))} />
           ~
           <input type="date" value=${bd.to || ""}
-                 onChange=${e => setFilterValues(p => ({...p, business_date: {...(p.business_date||{}), to: e.target.value}}))} />
+                 onChange=${e => setFilterValues(p => ({...p, business_date:{...p.business_date, to:e.target.value}}))} />
         </div>
       </div>
       <div class="field">
         <label>项目 (多选)</label>
-        <div class="field-input" style=${{flexWrap:"wrap", minWidth:"260px"}} onClick=${(e) => { e.stopPropagation(); openProjects(""); }}>
-          ${!(filterValues.projects || []).length && html`<span style=${{color:"var(--muted)"}}>请选择项目 …</span>`}
-          ${(filterValues.projects || []).slice(0, 4).map(v => html`
-            <span class="chip" key=${v.value||v}>
-              ${v.label || v.value}
-              <span class="x" onClick=${(e) => { e.stopPropagation(); removeChip("projects", v); }}>×</span>
+        <div class="field-input" style=${{flexWrap:"wrap",minWidth:"260px"}} onClick=${e => { e.stopPropagation(); openProjects(e); }}>
+          ${!filterValues.projects.length && html`<span style=${{color:"var(--muted)"}}>请选择项目 …</span>`}
+          ${filterValues.projects.slice(0, 4).map(v => html`
+            <span class="chip" key=${v.value}>
+              ${v.label}
+              <span class="x" onClick=${e => { e.stopPropagation(); toggleProj(v); }}>×</span>
             </span>
           `)}
-          ${(filterValues.projects || []).length > 4 && html`<span class="chip" style=${{background:"#e5e7eb",color:"var(--text-soft)"}}>+${(filterValues.projects||[]).length - 4}</span>`}
-          <span style=${{color:"var(--muted)", marginLeft:"auto"}}> ▾</span>
+          ${filterValues.projects.length > 4 && html`<span class="chip" style=${{background:"#e5e7eb",color:"var(--text-soft)"}}>+${filterValues.projects.length - 4}</span>`}
+          <span style=${{color:"var(--muted)",marginLeft:"auto"}}>▾</span>
         </div>
       </div>
       <div class="actions">
         <button class="btn ghost" onClick=${reset}>重置</button>
-        <button class="btn primary" onClick=${refresh}>查询</button>
+        <button class="btn primary" onClick=${() => { setPage(1); refresh(); }}>查询</button>
       </div>
     </div>
 
-    <div class="toolbar"><span>${rows.length} 行 · 合计行始终吸底</span><span style=${{flex:1}}></span><span>React 18 + Hooks + UMD CDN + htm</span></div>
+    <div class="toolbar">
+      <span>共 ${total} 行 · 当前页 ${rows.length} 行
+        ${rowFilters.length > 0 && html`<span style=${{color:"var(--primary)"}}> · ${rowFilters.length} 列筛选</span>`}
+      </span>
+      <span class="grow"></span>
+      ${total > pageSize && html`<${React.Fragment}>
+        <button class="btn sm" disabled=${page<=1} onClick=${() => setPage(p => Math.max(1, p-1))}>‹</button>
+        <span style=${{minWidth:"80px",textAlign:"center"}}>${page} / ${totalPages}</span>
+        <button class="btn sm" disabled=${page>=totalPages} onClick=${() => setPage(p => p+1)}>›</button>
+        <select value=${pageSize} onChange=${e => { setPageSize(+e.target.value); setPage(1); }}
+                style=${{border:"1px solid var(--border-strong)",borderRadius:"4px",padding:"3px 8px",fontSize:"11px"}}>
+          ${[10,25,50,100].map(n => html`<option key=${n} value=${n}>${n} 行</option>`)}
+        </select>
+      </${React.Fragment}>`}
+      <span style=${{fontSize:"11px",marginLeft:"8px"}}>⭐ 收藏置顶 · 表头 ▽ 列筛 · 数字单元格下钻</span>
+    </div>
+
     <div class="tableshell">
       <div class="tw">
         <table class="grid">
           <thead>
             ${headerMatrix.rows.map((row, ri) => html`
               <tr key=${ri}>
+                ${ri === 0 && rowFavEnabled && html`<th rowSpan=${headerMatrix.maxD} className="leaf pin-left fav-col" style=${{width:"32px"}}>★</th>`}
                 ${row.map((cell, ci) => {
                   if (cell.kind === "leaf") {
-                    const cls = ["leaf", cell.node.default_pinned === "left" ? "pin-left" : ""].filter(Boolean).join(" ");
-                    return html`<th key=${ci} className=${cls} rowSpan=${cell.rowSpan}>${cell.node.label}</th>`;
+                    const isSorted = sort?.field === cell.node.code;
+                    const cls = classOf("leaf",
+                      cell.node.default_pinned === "left" && "pin-left",
+                      cell.node.sortable && "sortable",
+                      isSorted && "sorted");
+                    return html`<th key=${ci} className=${cls} rowSpan=${cell.rowSpan}
+                      onClick=${() => cell.node.sortable && toggleSort(cell.node.code)}>
+                      ${cell.node.label}
+                      ${cell.node.sortable && html`<span className="arr">${isSorted ? (sort.dir==="asc"?"▲":"▼") : "↕"}</span>`}
+                      ${cell.node.row_filterable && html`<span className=${"funnel" + (colHasFilter(cell.node.code)?" active":"")}
+                        onClick=${e => { e.stopPropagation(); openColFilter(cell.node, e); }}>${colHasFilter(cell.node.code) ? "▼" : "▽"}</span>`}
+                    </th>`;
                   }
                   return html`<th key=${ci} colSpan=${cell.colSpan} style=${{background:"#e9eef7"}}>${cell.node.label}</th>`;
                 })}
@@ -234,21 +465,31 @@ function App() {
           </thead>
           <tbody>
             ${rows.map(r => html`
-              <tr key=${r._domain_code_raw || r.domain_code}>
+              <tr key=${(r._project_code_raw||"")+"/"+r._domain_code_raw} className=${r._row_favorite ? "fav" : ""}>
+                ${rowFavEnabled && html`<td className="pin-left fav-col">
+                  <span className=${"star" + (r._row_favorite ? " on" : "")}
+                        onClick=${e => { e.stopPropagation(); toggleRowFav(r); }}>${r._row_favorite ? "★" : "☆"}</span>
+                </td>`}
                 ${leafCols.map(c => {
-                  const f = fmt(r[c.code], c.display);
-                  const cls = [f.cls, c.default_pinned === "left" ? "pin-left" : "", c.code === "domain_code" ? "dim" : ""].filter(Boolean).join(" ");
-                  return html`<td key=${c.code} className=${cls}>${f.text}</td>`;
+                  const f = fmt(fieldDisplayValue(c, r), c.display);
+                  const isClick = c.drilldown && c.code !== "domain_code" && c.code !== "project_code" && r[c.code] != null;
+                  return html`<td key=${c.code} className=${classOf(f.cls,
+                    c.default_pinned === "left" && "pin-left",
+                    (c.code === "domain_code" || c.code === "project_code") && "dim",
+                    isClick && "click")}
+                    onClick=${isClick ? () => openDrilldown(c, r) : null}>${f.text}</td>`;
                 })}
               </tr>
             `)}
           </tbody>
           ${totalsRow && html`<tfoot>
             <tr>
+              ${rowFavEnabled && html`<td className="pin-left fav-col"></td>`}
               ${leafCols.map(c => {
                 const f = fmt(totalsRow[c.code], c.display);
-                const cls = [f.cls, c.default_pinned === "left" ? "pin-left" : "", c.code === "domain_code" ? "dim" : ""].filter(Boolean).join(" ");
-                return html`<td key=${c.code} className=${cls}>${f.text}</td>`;
+                return html`<td key=${c.code} className=${classOf(f.cls,
+                  c.default_pinned === "left" && "pin-left",
+                  (c.code === "domain_code" || c.code === "project_code") && "dim")}>${f.text}</td>`;
               })}
             </tr>
           </tfoot>`}
@@ -256,23 +497,147 @@ function App() {
       </div>
     </div>
 
-    ${popup === "projects" && html`<div class="popup" style=${{left:"20px",top:"230px"}}>
-      <div class="popup-head">
-        <input placeholder="搜索项目…" value=${popupQ}
-               onChange=${e => { setPopupQ(e.target.value); openProjects(e.target.value); }} />
+    ${popup?.kind === "rowDim" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px"}}>
+      <div class="popup-head">行维度</div>
+      ${config.primary_view.row_dim_options.map(o => html`
+        <div key=${o.code} className=${"opt" + (o.code===rowDim?" sel":"")} onClick=${() => pickRowDim(o.code)}>
+          <span style=${{flex:1}}>${o.label}</span>
+          <span class="meta">约 ${o.row_count_hint} 行</span>
+        </div>
+      `)}
+    </div>`}
+
+    ${popup?.kind === "versions" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px",minWidth:"380px",maxHeight:"440px",overflow:"auto"}}>
+      <div class="popup-head">数据版本 (默认 latest valid)</div>
+      ${popup.loading
+        ? html`<div style=${{padding:"14px",color:"var(--muted)"}}>加载中…</div>`
+        : popup.items.map(v => html`
+            <div key=${v.period_date+"/"+v.source+"/"+v.version_no} className=${"ver-row" + (v.is_valid?"":" invalid")}>
+              <span style=${{flex:"0 0 86px"}}>${v.period_date}</span>
+              <span class="src">${v.source}</span>
+              <span class="vno">v${v.version_no}</span>
+              <span style=${{flex:1,fontSize:"11px",color:"var(--muted)"}}>${isVerPicked(v) ? "✓ 当前查询使用" : ""}</span>
+              <span class="act" onClick=${e => { e.stopPropagation(); markVer(v); }}>${v.is_valid ? "标无效" : "恢复"}</span>
+            </div>`)}
+    </div>`}
+
+    ${popup?.kind === "colFilter" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px"}}>
+      <h4 style=${{margin:"0 0 8px",fontSize:"13px"}}>${popup.col.label} · 列筛选</h4>
+      <div style=${{display:"flex",gap:"6px",marginBottom:"8px"}}>
+        <select value=${popup.op} onChange=${e => setPopup(p => ({...p, op:e.target.value}))}
+                style=${{padding:"5px 8px",border:"1px solid var(--border-strong)",borderRadius:"4px"}}>
+          ${popup.col.data_type === "string"
+            ? html`<${React.Fragment}><option value="ilike">包含</option><option value="eq">等于</option><option value="ne">不等</option></${React.Fragment}>`
+            : html`<${React.Fragment}><option value="gte">≥</option><option value="gt">&gt;</option><option value="lte">≤</option><option value="lt">&lt;</option><option value="eq">=</option><option value="ne">≠</option></${React.Fragment}>`}
+        </select>
+        <input value=${popup.val} placeholder=${popup.col.data_type==="string"?"例：core":"例：5000"}
+               onChange=${e => setPopup(p => ({...p, val:e.target.value}))}
+               style=${{flex:1,padding:"5px 8px",border:"1px solid var(--border-strong)",borderRadius:"4px",outline:0}} />
       </div>
-      <div class="popup-body">
-        ${projOpts.map(it => html`
-          <div key=${it.value} class=${"opt " + (projectSelected(it) ? "sel" : "")}
-               onClick=${(e) => { e.stopPropagation(); toggleProject(it); }}>
-            <input type="checkbox" checked=${projectSelected(it)} onChange=${() => {}} />
-            <span style=${{flex:1}}>${it.label}</span>
-          </div>
-        `)}
-      </div>
-      <div class="popup-foot">
+      <div style=${{display:"flex",gap:"6px"}}>
+        <button class="btn sm ghost" onClick=${clearColFilter}>清除</button>
         <span style=${{flex:1}}></span>
-        <button class="btn" style=${{fontSize:"11px",padding:"3px 8px"}} onClick=${() => setPopup(null)}>完成</button>
+        <button class="btn sm primary" onClick=${applyColFilter}>应用</button>
+      </div>
+    </div>`}
+
+    ${popup?.kind === "projects" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px",minWidth:"320px"}}>
+      <input value=${projQ} onChange=${e => searchProjects(e.target.value)} placeholder="搜索项目…"
+             style=${{width:"100%",padding:"5px 8px",border:"1px solid var(--border-strong)",borderRadius:"4px",outline:0,marginBottom:"6px"}} />
+      <div style=${{maxHeight:"280px",overflow:"auto"}}>
+        ${projOpts.map(it => html`<div key=${it.value} className=${"opt" + (projSelected(it)?" sel":"")} onClick=${e => { e.stopPropagation(); toggleProj(it); }}>
+          <input type="checkbox" checked=${projSelected(it)} onChange=${()=>{}} />
+          <span style=${{flex:1}}>${it.label}</span>
+        </div>`)}
+      </div>
+      <div style=${{display:"flex",gap:"6px",borderTop:"1px solid var(--border)",paddingTop:"6px",marginTop:"6px"}}>
+        <span style=${{flex:1}}></span>
+        <button class="btn sm" onClick=${() => setPopup(null)}>完成</button>
+      </div>
+    </div>`}
+
+    ${drill.open && html`<div class="modal-mask" onClick=${e => { if (e.target.classList.contains("modal-mask")) setDrill(d => ({...d, open:false})); }}>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>${drill.title}</h2>
+          <button class="btn ghost" style=${{width:"28px",height:"28px",padding:0}} onClick=${() => setDrill(d => ({...d, open:false}))}>✕</button>
+        </div>
+        <div class="modal-body">
+          <table class="grid">
+            <thead>
+              ${drillHeader.rows.map((row, ri) => html`
+                <tr key=${ri}>
+                  ${row.map((cell, ci) => {
+                    if (cell.kind === "leaf") {
+                      const isAct = drillColHasFilter(cell.node.code);
+                      return html`<th key=${ci} className=${classOf("leaf",
+                        cell.node.default_pinned === "left" && "pin-left",
+                        cell.node.sortable && "sortable")}
+                        rowSpan=${cell.rowSpan}
+                        onClick=${() => cell.node.sortable && drillToggleSort(cell.node.code)}>
+                        ${cell.node.label}
+                        ${cell.node.sortable && html`<span className="arr">↕</span>`}
+                        ${cell.node.row_filterable && html`<span className=${"funnel" + (isAct ? " active" : "")}
+                          onClick=${e => { e.stopPropagation(); drillOpenColFilter(cell.node, e); }}>${isAct ? "▼" : "▽"}</span>`}
+                      </th>`;
+                    }
+                    return html`<th key=${ci} colSpan=${cell.colSpan} style=${{background:"#e9eef7"}}>${cell.node.label}</th>`;
+                  })}
+                </tr>
+              `)}
+            </thead>
+            <tbody>
+              ${(drill.rows||[]).map(d => html`
+                <tr key=${d.ref_id}>
+                  ${drillLeaves.map(c => {
+                    let v = d[c.code];
+                    if (c.code === "is_ai_generated" || c.code === "is_adopted") v = v == null ? "—" : v ? "✓" : "✗";
+                    const f = fmt(v, c.display);
+                    const cls = classOf(f.cls, c.default_pinned === "left" && "pin-left");
+                    if (c.code === "ref_id" && d.ref_url) {
+                      return html`<td key=${c.code} className=${cls}><a href=${d.ref_url} target="_blank">${d.ref_id}</a></td>`;
+                    }
+                    return html`<td key=${c.code} className=${cls}>${f.text}</td>`;
+                  })}
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-foot">
+          <span>共 ${drill.total||0} 条 · 本页 ${(drill.rows||[]).length} 条
+            ${drill.rowFilters?.length > 0 && html`<span style=${{color:"var(--primary)"}}> · ${drill.rowFilters.length} 列筛选</span>`}
+          </span>
+          <span style=${{flex:1}}></span>
+          <button class="btn sm" disabled=${drill.page<=1} onClick=${() => setDrill(d => ({...d, page: Math.max(1, d.page-1)}))}>‹</button>
+          <span>${drill.page} / ${Math.max(1, Math.ceil((drill.total||0)/drill.pageSize))}</span>
+          <button class="btn sm" disabled=${drill.page >= Math.ceil((drill.total||0)/drill.pageSize)}
+                  onClick=${() => setDrill(d => ({...d, page: d.page+1}))}>›</button>
+          <select value=${drill.pageSize} onChange=${e => setDrill(d => ({...d, pageSize: +e.target.value, page: 1}))}
+                  style=${{border:"1px solid var(--border-strong)",borderRadius:"4px",padding:"2px 6px"}}>
+            ${[10,25,50,100].map(n => html`<option key=${n} value=${n}>${n}</option>`)}
+          </select>
+        </div>
+      </div>
+    </div>`}
+
+    ${popup?.kind === "drillColFilter" && html`<div class="popup" style=${{left:popup.x+"px",top:popup.y+"px"}}>
+      <h4 style=${{margin:"0 0 8px",fontSize:"13px"}}>${popup.col.label} · 列筛选</h4>
+      <div style=${{display:"flex",gap:"6px",marginBottom:"8px"}}>
+        <select value=${popup.op} onChange=${e => setPopup(p => ({...p, op:e.target.value}))}
+                style=${{padding:"5px 8px",border:"1px solid var(--border-strong)",borderRadius:"4px"}}>
+          ${popup.col.data_type === "string"
+            ? html`<${React.Fragment}><option value="ilike">包含</option><option value="eq">等于</option><option value="ne">不等</option></${React.Fragment}>`
+            : html`<${React.Fragment}><option value="eq">=</option><option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="ne">≠</option></${React.Fragment}>`}
+        </select>
+        <input value=${popup.val} placeholder=${popup.col.data_type==="string"?"例：core":"例：1"}
+               onChange=${e => setPopup(p => ({...p, val:e.target.value}))}
+               style=${{flex:1,padding:"5px 8px",border:"1px solid var(--border-strong)",borderRadius:"4px",outline:0}} />
+      </div>
+      <div style=${{display:"flex",gap:"6px"}}>
+        <button class="btn sm ghost" onClick=${drillClearColFilter}>清除</button>
+        <span style=${{flex:1}}></span>
+        <button class="btn sm primary" onClick=${drillApplyColFilter}>应用</button>
       </div>
     </div>`}
   </div>`;
