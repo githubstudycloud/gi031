@@ -67,6 +67,7 @@ COPY pyproject.toml /app/
 COPY app /app/app
 COPY prototype /app/prototype
 COPY frontend /app/frontend
+COPY admin /app/admin
 
 RUN pip install --no-cache-dir ".[mysql]" || pip install --no-cache-dir "."
 

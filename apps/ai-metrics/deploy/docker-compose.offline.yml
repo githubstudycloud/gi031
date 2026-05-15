@@ -11,25 +11,41 @@
 #   - 不装任何 apt 包，只走内网 pip 源
 #   - 不需要 nginx，FastAPI 自身服务静态文件
 
+x-common: &common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile.offline
+    args:
+      PYTHON_IMAGE:     "${PYTHON_IMAGE:-python:3.12-slim}"
+      PIP_INDEX_URL:    "${PIP_INDEX_URL}"
+      PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST-}"
+  image: ai-metrics:${IMAGE_TAG:-offline}
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment: &common-env
+    DATABASE_URL: "${DATABASE_URL}"
+    CORS_ORIGINS: "${CORS_ORIGINS:-*}"
+
 services:
+  # 报表查询服务 (read-only)
   api:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.offline
-      args:
-        PYTHON_IMAGE:     "${PYTHON_IMAGE:-python:3.12-slim}"
-        PIP_INDEX_URL:    "${PIP_INDEX_URL}"
-        PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST-}"
-    image: ai-metrics:${IMAGE_TAG:-offline}
+    <<: *common
     container_name: ai-metrics-api-offline
-    restart: unless-stopped
-    extra_hosts:
-      # Linux 上必须显式声明 host-gateway 别名，容器内才能用 host.docker.internal
-      - "host.docker.internal:host-gateway"
-    environment:
-      # DATABASE_URL 指向 host 上 mysql 5.7（必填）
-      # 例：mysql+pymysql://ai_metrics:pwd@host.docker.internal:3306/ai_metrics?charset=utf8mb4
-      DATABASE_URL: "${DATABASE_URL}"
-      CORS_ORIGINS: "${CORS_ORIGINS:-*}"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
     ports:
       - "${APP_PORT:-8001}:8001"
+
+  # 报表生成服务 (write + scheduler)
+  generation:
+    <<: *common
+    container_name: ai-metrics-gen-offline
+    command: ["uvicorn", "app.main_generation:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "1"]
+    environment:
+      <<: *common-env
+      SIM_CRON:       "${SIM_CRON:-0 */2 * * *}"
+      PREAGG_CRON:    "${PREAGG_CRON:-10 */2 * * *}"
+      SIM_DAYS_BACK:  "${SIM_DAYS_BACK:-1}"
+      SIM_RUNS_PER_CALL: "${SIM_RUNS_PER_CALL:-1}"
+    ports:
+      - "${GEN_PORT:-8002}:8002"

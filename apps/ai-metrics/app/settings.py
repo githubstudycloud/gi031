@@ -18,5 +18,12 @@ class Settings(BaseSettings):
     # True → 必须先调 /api/admin/preagg/refresh 灌好 preagg。
     use_preagg: bool = False
 
+    # V4：generation service 的调度器。空 cron 字符串 = 关闭对应任务
+    # cron 5 字段格式 minute hour day month day_of_week (与 unix cron 一致)
+    sim_cron: str = "0 */2 * * *"       # 每 2 小时拉一次模拟数据
+    preagg_cron: str = "10 */2 * * *"   # 比模拟晚 10 分钟刷预聚合
+    sim_days_back: int = 1               # 每次模拟最近 N 天
+    sim_runs_per_call: int = 1           # 每次跑几个版本
+
 
 settings = Settings()

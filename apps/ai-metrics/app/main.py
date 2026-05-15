@@ -36,7 +36,8 @@ app.include_router(admin.router,      prefix=settings.api_prefix, tags=["admin"]
 # 静态前端：把 prototype/ + frontend/vue/ + frontend/react/ 挂在不同前缀下
 _root = Path(__file__).parent.parent
 for mount_path, sub in [("/ui", "prototype"), ("/vue", "frontend/vue"),
-                        ("/react", "frontend/react"), ("/vendor", "frontend/vendor")]:
+                        ("/react", "frontend/react"), ("/vendor", "frontend/vendor"),
+                        ("/admin", "admin")]:
     p = _root / sub
     if p.exists():
         app.mount(mount_path, StaticFiles(directory=str(p), html=True), name=sub.replace("/", "_"))

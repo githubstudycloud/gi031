@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AI 度量看板 · 管理</title>
+<style>
+:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--success:#16a34a;--danger:#dc2626;--row-hover:#eff6ff}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","PingFang SC",sans-serif}
+.app{max-width:1400px;margin:0 auto;padding:16px 20px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.top h1{font-size:18px;margin:0} .top .badge{background:#fde68a;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.top .grow{flex:1} .top a{color:var(--primary);text-decoration:none;font-size:12px;margin-left:12px}
+.top input{padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;font:inherit;width:300px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.06);overflow:hidden}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-hd h2{margin:0;font-size:14px;flex:1}
+.card-bd{padding:8px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{background:#f1f5fa;font-weight:600;position:sticky;top:0}
+tbody tr:hover td{background:var(--row-hover)}
+td input,td select{padding:3px 6px;border:1px solid var(--border-strong);border-radius:4px;outline:0;font:inherit;width:auto}
+td input[type=text]{min-width:80px}
+.btn{background:#fff;border:1px solid var(--border-strong);border-radius:5px;padding:3px 9px;cursor:pointer;font:inherit;font-size:11px}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.danger{color:var(--danger);border-color:transparent;background:transparent}
+.btn.danger:hover{background:#fef2f2}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.toolbar{display:flex;gap:6px;align-items:center;padding:6px 14px;background:#f8fafc;border-bottom:1px solid var(--border)}
+.toolbar .grow{flex:1}
+.toolbar input{padding:4px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;font:inherit;font-size:12px}
+.tip{color:var(--muted);font-size:11px;padding:4px 14px}
+.matrix th, .matrix td{text-align:center;min-width:38px}
+.matrix th:first-child, .matrix td:first-child{text-align:left;min-width:130px;font-weight:500}
+.matrix td.on{background:#dcfce7;color:#166534;cursor:pointer}
+.matrix td.off{background:#fef2f2;color:#9ca3af;cursor:pointer}
+.matrix td.on:hover{background:#bbf7d0} .matrix td.off:hover{background:#fee2e2}
+.toast{position:fixed;bottom:20px;right:20px;background:#1f2330;color:#fff;padding:8px 14px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+.toast.show{opacity:1}
+.actions-cell{display:flex;gap:4px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <h1>AI 度量看板 · 管理后台</h1>
+    <span class="badge">字段配置 · admin only</span>
+    <span class="grow"></span>
+    <span class="tip" id="genUrl"></span>
+    <a href="/ui/" target="_blank">原生 HTML</a>
+    <a href="/vue/" target="_blank">Vue demo</a>
+    <a href="/react/" target="_blank">React demo</a>
+  </div>
+
+  <div class="cards">
+    <!-- 项目 -->
+    <div class="card">
+      <div class="card-hd"><h2>📁 项目 (dim_project)</h2><button class="btn primary" onclick="addProject()">+ 新建</button></div>
+      <div class="card-bd"><table id="projTable"><thead><tr><th>code</th><th>名称</th><th>启用</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <!-- 领域 -->
+    <div class="card">
+      <div class="card-hd"><h2>🗂 领域 (dim_domain)</h2><button class="btn primary" onclick="addDomain()">+ 新建</button></div>
+      <div class="card-bd"><table id="domTable"><thead><tr><th>code</th><th>名称</th><th>排序</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <!-- 项目-领域 矩阵 -->
+    <div class="card" style="grid-column:1/3">
+      <div class="card-hd"><h2>🔗 项目 ↔ 领域 映射</h2>
+        <span class="tip">点击单元格切换。绿=映射；红=无</span>
+      </div>
+      <div class="card-bd" style="overflow:auto"><table class="matrix" id="matrixTable"></table></div>
+    </div>
+    <!-- 指标 -->
+    <div class="card" style="grid-column:1/3">
+      <div class="card-hd"><h2>📐 指标定义 (metric_def)</h2><button class="btn primary" onclick="addMetric()">+ 新建</button></div>
+      <div class="card-bd" style="overflow:auto"><table id="metricTable">
+        <thead><tr>
+          <th>code</th><th>label</th><th>category</th><th>unit</th><th>data_type</th>
+          <th>agg</th><th>formula</th><th>weight</th><th>drill</th><th>visible</th><th>order</th><th></th>
+        </tr></thead><tbody></tbody></table></div>
+    </div>
+    <!-- 调度 + 操作 -->
+    <div class="card" style="grid-column:1/3">
+      <div class="card-hd"><h2>⚙ 调度 / 手动触发</h2></div>
+      <div class="card-bd" style="display:flex;gap:24px;padding:14px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0 0 6px;font-size:13px">数据仿真</h3>
+          <div style="display:flex;gap:6px;align-items:center">
+            天数 <input id="simDays" type="number" value="1" min="1" max="365" style="width:60px">
+            每天版本数 <input id="simRuns" type="number" value="1" min="1" max="5" style="width:50px">
+            <label><input id="simReset" type="checkbox" /> reset</label>
+            <button class="btn primary" onclick="runSimulate()">▶ 立即跑</button>
+          </div>
+          <div class="tip">cron 在 env <code>SIM_CRON</code> 配置；当前由 <code>app.main_generation</code> 自动调度</div>
+        </div>
+        <div>
+          <h3 style="margin:0 0 6px;font-size:13px">预聚合刷新</h3>
+          <div style="display:flex;gap:6px;align-items:center">
+            最近 <input id="preDays" type="number" value="60" min="1" max="365" style="width:60px"> 天
+            <button class="btn primary" onclick="runPreagg()">⚡ 刷新</button>
+          </div>
+          <div class="tip">cron 在 env <code>PREAGG_CRON</code> 配置</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* 管理后台调 generation service；地址按 location 推导。
+   - 当通过 /admin/ 路径访问 (FastAPI mount)：query 服务在 :8001 → 推 generation 在 :8002
+   - 当独立打开 file://：手工指定 */
+const GEN_URL = (() => {
+  if (location.protocol === "file:") return "http://127.0.0.1:8002";
+  // 同 host，端口替换 8001 → 8002
+  const port = location.port || (location.protocol === "https:" ? "443" : "80");
+  if (port === "8002") return "";   // 直接挂在 generation 上
+  if (port === "8001") return location.origin.replace(/:8001$/, ":8002");
+  return "";
+})();
+document.getElementById("genUrl").textContent = "→ " + (GEN_URL || location.origin);
+
+async function api(path, opts = {}) {
+  const r = await fetch(GEN_URL + path, {
+    ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`HTTP ${r.status}: ${t.slice(0, 200)}`);
+  }
+  return r.json();
+}
+
+let projects = [], domains = [], metrics = [], pdMap = {};
+
+function toast(m, kind = "ok") {
+  const el = document.getElementById("toast");
+  el.textContent = m; el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+async function loadAll() {
+  try {
+    const [p, d, pd, m] = await Promise.all([
+      api("/api/admin/projects"), api("/api/admin/domains"),
+      api("/api/admin/project_domains"), api("/api/admin/metrics"),
+    ]);
+    projects = p.data.items;
+    domains = d.data.items;
+    pdMap = {};
+    for (const r of pd.data.items) pdMap[r.project_code] = r.domain_codes;
+    metrics = m.data.items;
+    renderProjects(); renderDomains(); renderMatrix(); renderMetrics();
+  } catch (e) {
+    toast("加载失败: " + e.message);
+  }
+}
+
+/* ─── 项目 ─── */
+function renderProjects() {
+  const tb = document.querySelector("#projTable tbody"); tb.innerHTML = "";
+  for (const p of projects) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="text" disabled value="${p.code}"></td>
+      <td><input type="text" value="${p.name}"></td>
+      <td><input type="checkbox" ${p.is_active ? "checked" : ""}></td>
+      <td class="actions-cell">
+        <button class="btn" onclick="saveProject('${p.code}', this)">保存</button>
+        <button class="btn danger" onclick="deleteProject('${p.code}')">删除</button>
+      </td>`;
+    tb.appendChild(tr);
+  }
+}
+async function saveProject(code, btn) {
+  const tr = btn.closest("tr");
+  const name = tr.querySelectorAll("input")[1].value;
+  const active = tr.querySelectorAll("input")[2].checked;
+  await api("/api/admin/projects", { method: "POST", body: JSON.stringify({ code, name, is_active: active }) });
+  toast("已保存"); loadAll();
+}
+async function deleteProject(code) {
+  if (!confirm(`删除项目 ${code} 及其映射?`)) return;
+  await api("/api/admin/projects/" + encodeURIComponent(code), { method: "DELETE" });
+  toast("已删除"); loadAll();
+}
+function addProject() {
+  const code = prompt("项目 code（如 proj_epsilon）"); if (!code) return;
+  const name = prompt("项目名称（如 Epsilon 推荐系统）"); if (!name) return;
+  api("/api/admin/projects", { method: "POST", body: JSON.stringify({ code, name, is_active: true }) })
+    .then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
+}
+
+/* ─── 领域 ─── */
+function renderDomains() {
+  const tb = document.querySelector("#domTable tbody"); tb.innerHTML = "";
+  for (const d of domains) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="text" disabled value="${d.code}"></td>
+      <td><input type="text" value="${d.name}"></td>
+      <td><input type="number" value="${d.sort_order}" style="width:60px"></td>
+      <td class="actions-cell">
+        <button class="btn" onclick="saveDomain('${d.code}', this)">保存</button>
+        <button class="btn danger" onclick="deleteDomain('${d.code}')">删除</button>
+      </td>`;
+    tb.appendChild(tr);
+  }
+}
+async function saveDomain(code, btn) {
+  const tr = btn.closest("tr");
+  const name = tr.querySelectorAll("input")[1].value;
+  const sort_order = +tr.querySelectorAll("input")[2].value;
+  await api("/api/admin/domains", { method: "POST", body: JSON.stringify({ code, name, sort_order }) });
+  toast("已保存"); loadAll();
+}
+async function deleteDomain(code) {
+  if (!confirm(`删除领域 ${code}?`)) return;
+  await api("/api/admin/domains/" + encodeURIComponent(code), { method: "DELETE" });
+  toast("已删除"); loadAll();
+}
+function addDomain() {
+  const code = prompt("领域 code"); if (!code) return;
+  const name = prompt("领域名称"); if (!name) return;
+  api("/api/admin/domains", { method: "POST", body: JSON.stringify({ code, name, sort_order: 99 }) })
+    .then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
+}
+
+/* ─── 项目-领域映射 矩阵 ─── */
+function renderMatrix() {
+  const tb = document.getElementById("matrixTable");
+  let head = `<thead><tr><th>项目 \\ 领域</th>` +
+    domains.map(d => `<th>${d.name}<br><small style="color:var(--muted);font-weight:400">${d.code}</small></th>`).join("") + `</tr></thead>`;
+  let body = "<tbody>";
+  for (const p of projects) {
+    const ds = pdMap[p.code] || [];
+    body += `<tr><td>${p.name}<br><small style="color:var(--muted)">${p.code}</small></td>`;
+    for (const d of domains) {
+      const on = ds.includes(d.code);
+      body += `<td class="${on ? 'on' : 'off'}" onclick="toggleMapping('${p.code}','${d.code}')">${on ? "✓" : "—"}</td>`;
+    }
+    body += "</tr>";
+  }
+  body += "</tbody>";
+  tb.innerHTML = head + body;
+}
+async function toggleMapping(proj, dom) {
+  const cur = pdMap[proj] || [];
+  let next;
+  if (cur.includes(dom)) next = cur.filter(x => x !== dom);
+  else next = [...cur, dom];
+  await api("/api/admin/project_domains", { method: "POST",
+    body: JSON.stringify({ project_code: proj, domain_codes: next }) });
+  pdMap[proj] = next;
+  renderMatrix();
+  toast(`${proj} ↔ ${dom}: ${cur.includes(dom) ? '解除' : '已映射'}`);
+}
+
+/* ─── 指标 ─── */
+function renderMetrics() {
+  const tb = document.querySelector("#metricTable tbody"); tb.innerHTML = "";
+  for (const m of metrics) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input value="${m.code}" disabled style="min-width:120px"></td>
+      <td><input value="${m.label}" style="min-width:140px"></td>
+      <td><input value="${m.category}" style="width:90px"></td>
+      <td><input value="${m.unit ?? ''}" style="width:50px"></td>
+      <td>
+        <select>${["int","decimal","percent"].map(v=>`<option value="${v}"${m.data_type===v?" selected":""}>${v}</option>`).join("")}</select>
+      </td>
+      <td>
+        <select>${["sum","avg","weighted_avg","computed"].map(v=>`<option value="${v}"${m.agg_method===v?" selected":""}>${v}</option>`).join("")}</select>
+      </td>
+      <td><input value="${m.computed_formula ?? ''}" style="min-width:200px"></td>
+      <td><input value="${m.weight_metric ?? ''}" style="width:120px"></td>
+      <td><input type="checkbox" ${m.drilldown_enabled ? "checked":""}></td>
+      <td><input type="checkbox" ${m.is_default_visible ? "checked":""}></td>
+      <td><input type="number" value="${m.sort_order}" style="width:50px"></td>
+      <td class="actions-cell">
+        <button class="btn" onclick="saveMetric('${m.code}', this)">保存</button>
+        <button class="btn danger" onclick="deleteMetric('${m.code}')">删除</button>
+      </td>`;
+    tb.appendChild(tr);
+  }
+}
+async function saveMetric(code, btn) {
+  const tr = btn.closest("tr");
+  const inputs = tr.querySelectorAll("input, select");
+  const body = {
+    code,
+    label: inputs[1].value, category: inputs[2].value, unit: inputs[3].value || null,
+    data_type: inputs[4].value, agg_method: inputs[5].value,
+    computed_formula: inputs[6].value || null, weight_metric: inputs[7].value || null,
+    drilldown_enabled: inputs[8].checked, is_default_visible: inputs[9].checked,
+    sort_order: +inputs[10].value,
+  };
+  await api("/api/admin/metrics", { method: "POST", body: JSON.stringify(body) });
+  toast("已保存"); loadAll();
+}
+async function deleteMetric(code) {
+  if (!confirm(`删除指标 ${code}?\n注意：事实表已有此 metric 的数据不会自动清理`)) return;
+  await api("/api/admin/metrics/" + encodeURIComponent(code), { method: "DELETE" });
+  toast("已删除"); loadAll();
+}
+function addMetric() {
+  const code = prompt("指标 code (例: ai_review_count)"); if (!code) return;
+  const label = prompt("指标名称") || code;
+  const category = prompt("分类 (测试设计 / 测试脚本生成 / ...)") || "其它";
+  api("/api/admin/metrics", { method: "POST",
+    body: JSON.stringify({ code, label, category, data_type: "int", agg_method: "sum", is_default_visible: true, drilldown_enabled: false, sort_order: 99 })
+  }).then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
+}
+
+/* ─── 调度/手动触发 ─── */
+async function runSimulate() {
+  const days = +document.getElementById("simDays").value;
+  const runs = +document.getElementById("simRuns").value;
+  const reset = document.getElementById("simReset").checked;
+  toast("仿真启动中...");
+  try {
+    await api("/api/admin/generate/simulate", { method: "POST", body: JSON.stringify({ days, runs_per_day: runs, reset }) });
+    toast(`仿真完成: ${days} 天 × ${runs} 版本`);
+  } catch (e) { toast("仿真失败: " + e.message); }
+}
+async function runPreagg() {
+  const days = +document.getElementById("preDays").value;
+  toast("预聚合中...");
+  try {
+    const r = await api("/api/admin/preagg/refresh", { method: "POST", body: JSON.stringify({ days_back: days }) });
+    toast(`预聚合: 删 ${r.data.deleted} / 插 ${r.data.inserted}`);
+  } catch (e) { toast("预聚合失败: " + e.message); }
+}
+
+loadAll();
+</script>
+</body>
+</html>

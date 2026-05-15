@@ -40,6 +40,7 @@ COPY pyproject.toml ./
 COPY app ./app
 COPY prototype ./prototype
 COPY frontend ./frontend
+COPY admin ./admin
 
 # 装依赖；mysql 走 pymysql (纯 Python，不需要 system mysql-client headers)
 RUN pip install --no-cache-dir ".[mysql]"

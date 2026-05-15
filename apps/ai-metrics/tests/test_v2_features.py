@@ -35,8 +35,8 @@ def test_summary_row_dim_project_domain(client):
                     json={"paging": "none", "row_dim": "project>domain"})
     assert r.status_code == 200
     data = r.json()["data"]
-    # 4 projects × 6 domains = 24 行
-    assert len(data["items"]) == 24
+    # 4 projects × 真实领域映射 = 17 行（不是 4×6=24，因为每个项目只有 4-5 个领域）
+    assert len(data["items"]) == 17
     sample = data["items"][0]
     assert "project_code" in sample and "domain_code" in sample
     assert "_project_code_raw" in sample and "_domain_code_raw" in sample
@@ -48,7 +48,7 @@ def test_summary_paging(client):
                           "row_dim": "project>domain"})
     data = r.json()["data"]
     assert len(data["items"]) == 10
-    assert data["total"] == 24
+    assert data["total"] == 17    # 4 项目×realistic 领域映射 = 17（不再是 4×6=24）
     assert data["has_more"] is True
 
 

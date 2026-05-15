@@ -17,7 +17,7 @@ from sqlalchemy import delete
 
 from app.db import SessionLocal, init_db
 from app.models import (
-    DimProject, DimDomain, MetricDef, AiMetric, AiMetricDetail, ViewTemplate
+    DimProject, DimDomain, DimProjectDomain, MetricDef, AiMetric, AiMetricDetail, ViewTemplate
 )
 
 
@@ -71,6 +71,15 @@ DOMAINS = [
     ("frontend",  "前端域", 6),
 ]
 
+# 项目-领域映射（真实业务：每个项目只有一部分领域）
+# 行：项目；列：是否包含该领域
+PROJECT_DOMAINS = {
+    "proj_alpha":  ["core", "business", "frontend", "data"],          # 内容平台
+    "proj_beta":   ["core", "business", "platform", "infra"],         # 交易中台
+    "proj_gamma":  ["core", "platform", "data", "infra"],             # 风控引擎
+    "proj_delta":  ["core", "business", "platform", "data", "infra"], # 数据中台
+}
+
 # 指标定义（数据驱动，加指标改这里）
 METRIC_DEFS = [
     # ── 测试设计 ──
@@ -111,6 +120,11 @@ def seed_dimensions(db: Session):
     if not db.query(DimDomain).count():
         for code, name, sort_order in DOMAINS:
             db.add(DimDomain(code=code, name=name, sort_order=sort_order))
+    if not db.query(DimProjectDomain).count():
+        for proj, doms in PROJECT_DOMAINS.items():
+            for sort_idx, dom in enumerate(doms):
+                db.add(DimProjectDomain(project_code=proj, domain_code=dom,
+                                        is_active=True, sort_order=sort_idx))
     if not db.query(MetricDef).count():
         for (code, label, cat, unit, dt, agg, formula, weight, drill, vis, so) in METRIC_DEFS:
             db.add(MetricDef(

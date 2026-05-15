@@ -34,6 +34,21 @@ class DimDomain(Base):
     __table_args__ = (MYSQL_TABLE_ARGS,)
 
 
+class DimProjectDomain(Base):
+    """项目↔领域多对多映射；只有这里登记过的 (proj, domain) 组合才会生成数据。"""
+    __tablename__ = "dim_project_domain"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(String(64))
+    domain_code: Mapped[str] = mapped_column(String(64))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    __table_args__ = (
+        UniqueConstraint("project_code", "domain_code", name="uq_proj_dom"),
+        Index("idx_proj_dom_active", "project_code", "is_active"),
+        MYSQL_TABLE_ARGS,
+    )
+
+
 # 预留：V1.1 / V1.2 扩展
 class DimIteration(Base):
     __tablename__ = "dim_iteration"

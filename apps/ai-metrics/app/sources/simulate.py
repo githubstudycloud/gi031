@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from sqlalchemy import select, delete, func
 
 from app.db import SessionLocal, init_db
-from app.models import AiMetric, AiMetricDetail, DimProject, DimDomain
+from app.models import AiMetric, AiMetricDetail, DimProject, DimDomain, DimProjectDomain
 
 
 # ─── source 元数据 ─────────────────────────────────────────────
@@ -229,8 +229,9 @@ SOURCE_GENERATORS = {
 }
 
 
-def simulate_source_day(db, src_key, the_date, projects, domains):
-    """对 (date, src) 跑一次，写所有 (proj, domain) 组合的 detail + metric_value。"""
+def simulate_source_day(db, src_key, the_date, proj_doms: dict[str, list[str]]):
+    """对 (date, src) 跑一次。
+    proj_doms: {project_code: [domain_code, ...]} —— 仅遍历已映射的组合。"""
     ver = _next_version(db, the_date, src_key)
     inserted_metric = 0
     detail_count_before = db.execute(
@@ -240,8 +241,8 @@ def simulate_source_day(db, src_key, the_date, projects, domains):
                AiMetricDetail.version_no == ver)
     ).scalar() or 0
 
-    for proj in projects:
-        for dom in domains:
+    for proj, dom_list in proj_doms.items():
+        for dom in dom_list:
             gen = SOURCE_GENERATORS[src_key]
             if src_key == "sonar":
                 # sonar 需要本日同组合的 ai_code_lines 作为上限，先查 gitlab 的本版本
@@ -285,11 +286,18 @@ def run(src_keys, days_back, reset=False, runs_per_day=1):
     src_keys = [s for s in order if s in src_keys]
 
     with SessionLocal() as db:
-        projects = [p.code for p in db.execute(select(DimProject)).scalars().all()]
-        domains  = [d.code for d in db.execute(select(DimDomain)).scalars().all()]
-        if not projects or not domains:
-            print("⚠ no projects/domains seeded — run `python -m app.seed.fake_data` first")
+        # **关键**：读项目-领域映射，只对真实存在的 (proj, domain) 组合生成
+        mappings = db.execute(
+            select(DimProjectDomain).where(DimProjectDomain.is_active.is_(True))
+            .order_by(DimProjectDomain.project_code, DimProjectDomain.sort_order)
+        ).scalars().all()
+        if not mappings:
+            print("⚠ no project-domain mappings — run `python -m app.seed.fake_data` first")
             return
+        # 按项目分组：proj_code → [domain_code, ...]
+        proj_doms: dict[str, list[str]] = {}
+        for m in mappings:
+            proj_doms.setdefault(m.project_code, []).append(m.domain_code)
 
         if reset:
             db.execute(delete(AiMetric).where(AiMetric.source.in_(src_keys)))
@@ -302,7 +310,7 @@ def run(src_keys, days_back, reset=False, runs_per_day=1):
             the_date = today - timedelta(days=d_off)
             for run_idx in range(runs_per_day):
                 for sk in src_keys:
-                    ins, det, ver = simulate_source_day(db, sk, the_date, projects, domains)
+                    ins, det, ver = simulate_source_day(db, sk, the_date, proj_doms)
                     print(f"  {the_date}  [{sk:>9}] v{ver}  metric+{ins:>3}  detail+{det:>4}")
 
 

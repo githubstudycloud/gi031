@@ -118,9 +118,14 @@ case "${1:-up}" in
     verify)
         require_env
         APP_PORT=$(grep -E "^APP_PORT=" "$ENV_FILE" | cut -d= -f2 || echo 8001)
+        GEN_PORT=$(grep -E "^GEN_PORT=" "$ENV_FILE" | cut -d= -f2 || echo 8002)
         BASE="http://localhost:${APP_PORT}"
-        echo "--- /api/healthz"
+        GEN="http://localhost:${GEN_PORT}"
+        echo "--- query /api/healthz"
         curl -sf "$BASE/api/healthz" || echo FAIL
+        echo
+        echo "--- generation /healthz + scheduled jobs"
+        curl -sf "$GEN/" || echo FAIL
         echo
         echo "--- /api/dropdowns/projects"
         curl -sf "$BASE/api/dropdowns/projects" | head -c 200 || echo FAIL
@@ -136,10 +141,11 @@ case "${1:-up}" in
         echo
         echo "--- /vendor/vue.esm-browser.prod.js (本地 JS)"
         curl -sIo /dev/null -w "%{http_code}\n" "$BASE/vendor/vue.esm-browser.prod.js"
-        echo "--- /vue/ /react/ /ui/"
-        curl -sIo /dev/null -w "ui:    %{http_code}\n" "$BASE/ui/"
-        curl -sIo /dev/null -w "vue:   %{http_code}\n" "$BASE/vue/"
-        curl -sIo /dev/null -w "react: %{http_code}\n" "$BASE/react/"
+        echo "--- /vue/ /react/ /ui/ /admin/"
+        curl -sIo /dev/null -w "ui:     %{http_code}\n" "$BASE/ui/"
+        curl -sIo /dev/null -w "vue:    %{http_code}\n" "$BASE/vue/"
+        curl -sIo /dev/null -w "react:  %{http_code}\n" "$BASE/react/"
+        curl -sIo /dev/null -w "admin:  %{http_code}\n" "$BASE/admin/"
         ;;
     *)
         cat <<EOF
