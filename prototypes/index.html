@@ -271,6 +271,51 @@
   .audit-mini-help { color: var(--muted); font-size: 11px; }
   .empty-state { padding: 60px 20px; text-align: center; color: var(--muted); }
 
+  /* Tree-row dimension */
+  td.tree-cell .tree-indent { display: inline-block; }
+  td.tree-cell .tree-caret { display: inline-block; width: 14px; text-align: center; cursor: pointer; color: var(--muted); margin-right: 2px; user-select: none; }
+  td.tree-cell .tree-caret:hover { color: var(--primary); }
+  td.tree-cell .tree-caret.leaf { cursor: default; color: transparent; }
+  tr.agg-d0 td { background: #eef2f7 !important; font-weight: 700; }
+  tr.agg-d1 td { background: #f3f6fb !important; font-weight: 600; }
+  tr.agg-d2 td { background: #f8fafc !important; font-weight: 500; }
+  tr.agg-d0 td .src-badge, tr.agg-d1 td .src-badge, tr.agg-d2 td .src-badge { display:none; }
+
+  /* KPI banner (看板模板) */
+  .kpi-banner { display: flex; gap: 0; padding: 0; margin-top: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); overflow: hidden; }
+  .kpi-card { flex: 1; padding: 10px 16px; border-right: 1px solid var(--border); position: relative; }
+  .kpi-card:last-child { border-right: 0; }
+  .kpi-card .kpi-label { font-size: 11px; color: var(--text-soft); }
+  .kpi-card .kpi-value { font-size: 22px; font-weight: 600; color: var(--text); margin-top: 2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi-card .kpi-trend { font-size: 11px; margin-top: 2px; }
+  .kpi-card .kpi-trend.up { color: var(--success); }
+  .kpi-card .kpi-trend.down { color: var(--danger); }
+  .kpi-card .kpi-spark { position: absolute; right: 12px; top: 12px; opacity: .35; font-size: 11px; }
+
+  /* Mode select */
+  .mode-sel { padding: 3px 8px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; font-size: 11px; color: var(--text-soft); }
+  .mode-sel:focus { border-color: var(--primary); outline: 0; box-shadow: 0 0 0 3px var(--primary-50); }
+
+  /* Distinct-values mode in column filter */
+  .colfilter { min-width: 320px; }
+  .colfilter .mode-tabs { display: flex; border-bottom: 1px solid var(--border); margin: -2px -4px 8px; padding: 0 4px; gap: 2px; }
+  .colfilter .mode-tab { padding: 5px 10px; cursor: pointer; font-size: 11px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .colfilter .mode-tab:hover { color: var(--primary); }
+  .colfilter .mode-tab.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .colfilter .distinct-search { width: 100%; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 4px; outline: 0; margin-bottom: 6px; }
+  .colfilter .distinct-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; padding: 2px; }
+  .colfilter .distinct-list label { display: flex; align-items: center; gap: 6px; padding: 3px 6px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+  .colfilter .distinct-list label:hover { background: var(--row-hover); }
+  .colfilter .distinct-list .ct { color: var(--muted); margin-left: auto; font-size: 10px; }
+  .colfilter .pick-all { font-size: 11px; padding: 4px 0; display: flex; gap: 8px; color: var(--primary); }
+  .colfilter .pick-all a { cursor: pointer; }
+
+  /* View template button */
+  .vt-pill { display:inline-flex; align-items:center; gap:5px; padding: 4px 10px; font-size:12px; border:1px solid var(--border-strong); border-radius:999px; background:#fff; cursor:pointer; }
+  .vt-pill:hover { border-color: var(--primary); color: var(--primary); }
+  .vt-pill .badge-rem { background: #ede9fe; color: #6d28d9; padding: 0 5px; border-radius: 3px; font-size: 10px; }
+  .vt-pill .badge-loc { background: #dbeafe; color: var(--primary-600); padding: 0 5px; border-radius: 3px; font-size: 10px; }
+
   /* X close button uniform */
   .x-close { width: 28px; height: 28px; padding: 0; border-radius: 4px; }
 </style>
@@ -286,6 +331,9 @@
       <span class="sub" id="cfgVer"></span>
       <span class="grow"></span>
       <div class="topbar-right">
+        <span class="vt-pill" id="vtPill" title="切换视图模板">
+          🎨 <span id="vtLabel">默认</span> <span id="vtSrc" class="badge-loc">内置</span> ▾
+        </span>
         <span class="ver-pill" id="verPill" title="点击切换报表版本">
           <span class="dot"></span><span id="verLabel">v3 · 最新</span> ▾
         </span>
@@ -294,14 +342,21 @@
     </header>
     <div id="warningBanner" style="display:none;"></div>
     <div class="panel filterbar" id="filterBar"></div>
+    <div id="kpiBanner" style="display:none;"></div>
   </div>
 
   <!-- ─────── Toolbar + Table ─────── -->
   <div class="toolbar">
     <span id="rowMeta">—</span>
     <span class="grow"></span>
-    <span class="audit-mini-help">数字单元格点击 <span class="kbd">下钻</span> · 表头 <span class="kbd">▽</span> 按列筛选 · 行首 <span class="kbd">★</span> 收藏置顶</span>
-    <span style="margin-left: 12px;">行密度</span>
+    <button class="btn sm ghost" id="btnTree" title="维度列树状结构 (行可展开)">🌲 行树状</button>
+    <span style="margin-left: 8px; font-size:11px;">分页</span>
+    <select class="mode-sel" id="pagingMode" title="服务端=后端 LIMIT，客户端=后端一次性返全量、前端切页，关闭=后端全量、前端不分页">
+      <option value="server">服务端</option>
+      <option value="client">客户端 (后端返全量)</option>
+      <option value="none">关闭 (后端返全量·不切页)</option>
+    </select>
+    <span style="margin-left: 8px; font-size:11px;">行密度</span>
     <span class="density" id="density">
       <button data-d="compact">紧凑</button>
       <button data-d="normal" class="on">默认</button>
@@ -562,6 +617,35 @@ let CURRENT_PRESET = "full";
 const MOCK_CONFIG = PRESETS.full;  // 兼容老引用
 
 /* ════════════════════════════════════════════════════════════════════
+   VIEW TEMPLATES —— 前端内置 + 后端动态返回；可在顶栏 🎨 切换
+   ════════════════════════════════════════════════════════════════════ */
+const VIEW_TEMPLATES = {
+  builtin: [
+    { code:"default", name:"默认",   source:"frontend_builtin",
+      config:{ density:"normal", page_size:50, paging_mode:"server", tree_mode:false } },
+    { code:"compact", name:"紧凑",   source:"frontend_builtin",
+      config:{ density:"compact", page_size:100, paging_mode:"server", tree_mode:false } },
+    { code:"kanban",  name:"看板 (KPI)", source:"frontend_builtin",
+      config:{ density:"normal", page_size:50, paging_mode:"server", show_kpi:true, tree_mode:false } },
+    { code:"tree",    name:"维度树状", source:"frontend_builtin",
+      config:{ density:"compact", page_size:200, paging_mode:"client", tree_mode:true } }
+  ],
+  /* 模拟"后端返回的自定义模板"——真实场景这部分来自
+     GET /api/view_templates/daily_sales （按 user/role/scope 过滤） */
+  remote: [
+    { code:"weekly_finance", name:"财务总监周报", source:"backend",
+      config:{ density:"normal", page_size:200, paging_mode:"client", tree_mode:true, show_kpi:true,
+        only_columns:["region_code","gmv_app","gmv_web","gmv_store","orders","refund"],
+        default_sort:{field:"refund",dir:"desc"} } },
+    { code:"region_mgr", name:"区域经理日表", source:"backend",
+      config:{ density:"compact", page_size:50, paging_mode:"server", tree_mode:false,
+        only_columns:["region_code","product_code","gmv_app","orders","conv_rate","safe_days"],
+        default_sort:{field:"gmv_app",dir:"desc"} } }
+  ]
+};
+let CURRENT_VIEW_TEMPLATE = "default";
+
+/* ════════════════════════════════════════════════════════════════════
    Mock data sources (dropdowns, versions, fact rows, drilldown rows)
    ════════════════════════════════════════════════════════════════════ */
 const MOCK_REGIONS = {
@@ -762,6 +846,22 @@ async function api(path, params={}) {
     let r = sortRows(rows, body.sort);
     return paged(r, body.paging ?? params, 30);
   }
+  if (path === "/api/reports/daily_sales/distinct") {
+    const col = params.column;
+    const rows = FACT_BY_VERSION[3];
+    const map = {};
+    rows.forEach(r => {
+      const v = r[col];
+      if (v == null) return;
+      const k = String(v);
+      if (!map[k]) map[k] = { value: v, label: (col==="region_code" ? (r.region_label||v) : String(v)), count: 0 };
+      map[k].count++;
+    });
+    return { items: Object.values(map).sort((a,b) => b.count - a.count) };
+  }
+  if (path === "/api/view_templates/daily_sales") {
+    return { items: VIEW_TEMPLATES.remote };
+  }
   if (path.startsWith("/api/users/me/favorites/")) {
     const key = path.split("/").pop();
     FAV[key] = FAV[key] || {};
@@ -782,6 +882,10 @@ async function api(path, params={}) {
   throw new Error("unknown api " + path);
 }
 function paged(items, p, defaultSize) {
+  // paging=none 或缺失 page 参数 → 返全量（后端默认行为，前端可选自切片）
+  if (p.paging === "none" || (p.page == null && p.page_size == null)) {
+    return { items, page:1, page_size: items.length, total: items.length, has_more: false, paging: "none" };
+  }
   const ps = +p.page_size || defaultSize, pg = +p.page || 1;
   return { items: items.slice((pg-1)*ps, pg*ps), page:pg, page_size:ps, total:items.length, has_more: pg*ps<items.length };
 }
@@ -838,7 +942,12 @@ const state = {
   rowFilters: [],   // [{column, op, value}]
   tree: null,       // merged column tree
   leaves: [],       // visible leaf columns (in display order)
-  density: "normal"
+  density: "normal",
+  pagingMode: "server",    // "server" | "client" | "none"
+  allRows: [],             // 客户端分页/不分页时缓存全部
+  treeMode: false,         // 维度列树状模式
+  expandedTreeKeys: new Set(["__root__","CN","CN-EAST","CN-SOUTH","CN-NORTH"]),
+  showKpi: false           // 看板 KPI 顶部条
 };
 
 /* ════════════════════════════════════════════════════════════════════
@@ -893,8 +1002,93 @@ function buildHeaderMatrix(tree) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
+   Tree builder (维度列树状)
+   ════════════════════════════════════════════════════════════════════ */
+const REGION_META = {
+  "CN-31":   { city:"上海", area:"华东", areaCode:"CN-EAST" },
+  "CN-3205": { city:"苏州", area:"华东", areaCode:"CN-EAST" },
+  "CN-44":   { city:"广东", area:"华南", areaCode:"CN-SOUTH" },
+  "CN-11":   { city:"北京", area:"华北", areaCode:"CN-NORTH" }
+};
+const TREE_SUMS = ["gmv_app","gmv_web","gmv_mp","gmv_store","orders","refund","stock"];
+function aggregateRow(label, rows, depth, key, parent, dimCols) {
+  const o = { _treeLabel: label, _depth: depth, _treeKey: key, _treeParent: parent, _has_children: true, _is_agg: true };
+  TREE_SUMS.forEach(k => o[k] = rows.reduce((s,r) => s + (+r[k]||0), 0));
+  o.conv_rate = rows.length ? rows.reduce((s,r) => s + (+r.conv_rate||0), 0) / rows.length : 0;
+  o.safe_days = rows.length ? rows.reduce((s,r) => s + (+r.safe_days||0), 0) / rows.length : 0;
+  return o;
+}
+function buildTreeFromRows(flat) {
+  const out = [];
+  if (!flat.length) return out;
+  out.push(aggregateRow("全国 (聚合)", flat, 0, "__root__", null));
+  const areas = {};
+  flat.forEach(r => {
+    const m = REGION_META[r.region_code]; if (!m) return;
+    (areas[m.areaCode] = areas[m.areaCode] || { meta:m, rows:[] }).rows.push(r);
+  });
+  for (const ac of Object.keys(areas)) {
+    out.push(aggregateRow(areas[ac].meta.area, areas[ac].rows, 1, ac, "__root__"));
+    const cities = {};
+    areas[ac].rows.forEach(r => {
+      (cities[r.region_code] = cities[r.region_code] || { rows:[] }).rows.push(r);
+    });
+    for (const cc of Object.keys(cities)) {
+      const m = REGION_META[cc];
+      out.push(aggregateRow(`${m.city} (${cc})`, cities[cc].rows, 2, cc, ac));
+      cities[cc].rows.forEach(r => {
+        out.push({ ...r, _depth:3, _treeKey: cc+"|"+r.product_code, _treeParent: cc, _has_children:false, _is_agg:false, _treeLabel: r.product_code });
+      });
+    }
+  }
+  return out;
+}
+function visibleTreeRows(tree) {
+  // 仅显示祖先全部已展开的行
+  const expanded = state.expandedTreeKeys;
+  const map = new Map(tree.map(r => [r._treeKey, r]));
+  return tree.filter(r => {
+    let cur = r._treeParent;
+    while (cur != null) {
+      if (!expanded.has(cur)) return false;
+      cur = map.get(cur)?._treeParent ?? null;
+    }
+    return true;
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
    Render
    ════════════════════════════════════════════════════════════════════ */
+function renderKpi() {
+  const el = document.getElementById("kpiBanner");
+  if (!state.showKpi) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const t = state.totals || { gmv_app:0, gmv_web:0, gmv_store:0, orders:0 };
+  el.style.display = "block";
+  el.innerHTML = `
+    <div class="kpi-banner">
+      <div class="kpi-card">
+        <div class="kpi-label">APP GMV</div>
+        <div class="kpi-value">¥${(t.gmv_app||0).toLocaleString("zh-CN",{maximumFractionDigits:0})}</div>
+        <div class="kpi-trend up">▲ +12.4% vs 昨日</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Web GMV</div>
+        <div class="kpi-value">¥${(t.gmv_web||0).toLocaleString("zh-CN",{maximumFractionDigits:0})}</div>
+        <div class="kpi-trend down">▼ -3.1% vs 昨日</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">门店 GMV</div>
+        <div class="kpi-value">¥${(t.gmv_store||0).toLocaleString("zh-CN",{maximumFractionDigits:0})}</div>
+        <div class="kpi-trend up">▲ +5.8%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">订单数</div>
+        <div class="kpi-value">${(t.orders||0).toLocaleString("zh-CN")}</div>
+        <div class="kpi-trend up">▲ +2.0%</div>
+      </div>
+    </div>`;
+}
 function renderTitle() {
   document.getElementById("reportTitle").textContent = state.config.meta.name;
   document.getElementById("cfgVer").textContent = "config v" + state.config.meta.version + " · " + state.config.meta.report_type;
@@ -1254,47 +1448,86 @@ function renderTable() {
   }
   table.appendChild(thead);
 
-  // <tbody>
+  // <tbody> —— 树状模式时把 state.allRows 转成树，过滤可见行
   const tbody = document.createElement("tbody");
-  for (const r of state.rows) {
+  const isTree = state.treeMode;
+  let renderRows = state.rows;
+  if (isTree) {
+    const source = state.allRows.length ? state.allRows : state.rows;
+    renderRows = visibleTreeRows(buildTreeFromRows(source));
+  }
+  // 第一列 dimension code（用于附 tree-cell 控件）
+  const firstDimCode = state.leaves.find(c => c.code === "region_code")?.code || state.leaves[0]?.code;
+  for (const r of renderRows) {
     const trr = document.createElement("tr");
     if (r._row_favorite) trr.classList.add("fav");
-    // star cell
+    if (isTree && r._is_agg) trr.classList.add("agg-d" + r._depth);
+    // star cell（聚合行不渲染收藏按钮）
     if (state.config.primary_view.row_favorite?.enabled) {
       const td = document.createElement("td"); td.className = "fav-td";
-      const btn = document.createElement("button"); btn.className = "star" + (r._row_favorite ? " on" : "");
-      btn.textContent = r._row_favorite ? "★" : "☆";
-      btn.title = r._row_favorite ? "取消收藏" : "收藏此行（置顶）";
-      btn.onclick = async (e) => {
-        e.stopPropagation();
-        const next = !r._row_favorite;
-        await api(`/api/users/me/row_favorites/daily_sales`, {
-          business_date: state.filterValues.business_date?.from,
-          business_key: { region_code: r.region_code, product_code: r.product_code },
-          favorited: next
-        });
-        r._row_favorite = next;
-        toast(next ? "已收藏 " + r.region_label + "/" + r.product_code : "取消收藏");
-        refresh();
-      };
-      td.appendChild(btn);
+      if (!isTree || !r._is_agg) {
+        const btn = document.createElement("button"); btn.className = "star" + (r._row_favorite ? " on" : "");
+        btn.textContent = r._row_favorite ? "★" : "☆";
+        btn.title = r._row_favorite ? "取消收藏" : "收藏此行（置顶）";
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const next = !r._row_favorite;
+          await api(`/api/users/me/row_favorites/daily_sales`, {
+            business_date: state.filterValues.business_date?.from,
+            business_key: { region_code: r.region_code, product_code: r.product_code },
+            favorited: next
+          });
+          r._row_favorite = next;
+          toast(next ? "已收藏 " + r.region_label + "/" + r.product_code : "取消收藏");
+          refresh();
+        };
+        td.appendChild(btn);
+      }
       trr.appendChild(td);
     }
     for (const c of state.leaves) {
       const td = document.createElement("td");
       let val = r[c.code];
-      if (c.code === "region_code" && r.region_label) val = `${r.region_label} (${val})`;
-      const fm = formatCell(val, c.display);
-      td.className = fm.cls + (c._pinned==="left"?" pin-left":"") + (c._pinned==="right"?" pin-right":"");
-      if (c.code === "region_code" || c.code === "product_code") td.classList.add("dim");
-      td.textContent = fm.text;
-      // drilldown
-      if (c.drilldown && val != null && val !== "") {
+      let isTreeCell = false;
+      if (isTree && c.code === firstDimCode) {
+        // 第一维度列：渲染缩进 + caret + 标签
+        isTreeCell = true;
+        td.className = "tree-cell" + (c._pinned==="left"?" pin-left":"");
+        td.classList.add("dim");
+        const indent = document.createElement("span");
+        indent.className = "tree-indent";
+        indent.style.width = ((r._depth ?? 0) * 16) + "px";
+        td.appendChild(indent);
+        const caret = document.createElement("span");
+        caret.className = "tree-caret" + (r._has_children ? "" : " leaf");
+        const isExpanded = state.expandedTreeKeys.has(r._treeKey);
+        caret.textContent = r._has_children ? (isExpanded ? "▾" : "▸") : "·";
+        if (r._has_children) {
+          caret.onclick = () => {
+            if (isExpanded) state.expandedTreeKeys.delete(r._treeKey);
+            else state.expandedTreeKeys.add(r._treeKey);
+            renderTable();
+          };
+        }
+        td.appendChild(caret);
+        const lab = document.createElement("span");
+        lab.textContent = r._treeLabel || (r.region_label ? `${r.region_label} (${r.region_code})` : r[c.code]);
+        if (r._is_agg) lab.style.fontWeight = "600";
+        td.appendChild(lab);
+      } else {
+        if (c.code === "region_code" && r.region_label) val = `${r.region_label} (${val})`;
+        const fm = formatCell(val, c.display);
+        td.className = fm.cls + (c._pinned==="left"?" pin-left":"") + (c._pinned==="right"?" pin-right":"");
+        if (c.code === "region_code" || c.code === "product_code") td.classList.add("dim");
+        td.textContent = fm.text;
+      }
+      // drilldown：聚合行禁用
+      if (c.drilldown && val != null && val !== "" && !(isTree && r._is_agg) && !isTreeCell) {
         td.classList.add("click");
         td.onclick = () => openDrilldown(c, r);
       }
-      // audit badge
-      if (r._audit && r._audit[c.code]) {
+      // audit badge：仅叶子行
+      if (r._audit && r._audit[c.code] && !(isTree && r._is_agg)) {
         const v = r._audit[c.code].find(x => x.valid);
         if (v) {
           const b = document.createElement("span");
@@ -1313,8 +1546,10 @@ function renderTable() {
   table.appendChild(tbody);
 
   // toolbar / pagination
-  let metaText = `${state.total} 行 · 当前 ${state.rows.length} 行`;
-  if (state.totals) metaText += ` · <b>APP GMV合计</b> ¥${state.totals.gmv_app.toLocaleString("zh-CN",{maximumFractionDigits:0})}`;
+  const pmTag = ({server:"服务端分页", client:"客户端分页 (全量已拉)", none:"不分页 (全量)"})[state.pagingMode];
+  let metaText = `${state.total} 行 · 当前 ${state.rows.length} 行 · <span style="color:var(--primary);">${pmTag}</span>`;
+  if (state.treeMode) metaText += ` · <span style="color:var(--success);">🌲 树状模式</span>`;
+  if (state.totals && state.totals.gmv_app != null) metaText += ` · <b>APP GMV合计</b> ¥${state.totals.gmv_app.toLocaleString("zh-CN",{maximumFractionDigits:0})}`;
   if (state.rowFilters.length) metaText += ` · <span style="color:var(--primary);">${state.rowFilters.length} 个列筛选</span>`;
   document.getElementById("rowMeta").innerHTML = metaText;
   renderPagination();
@@ -1375,40 +1610,108 @@ document.addEventListener("click", (e) => {
   if (popupEl && !popupEl.contains(e.target)
       && !e.target.closest(".field-input")
       && !e.target.closest(".ver-pill")
+      && !e.target.closest(".vt-pill")
       && !e.target.closest("#btnPreset")
+      && !e.target.closest("#btnTree")
       && !e.target.closest(".funnel")) closePopup();
 });
 
-function openColumnFilter(col, anchor) {
+async function openColumnFilter(col, anchor) {
   closePopup();
   const rect = anchor.getBoundingClientRect();
   popupEl = document.createElement("div"); popupEl.className = "popup colfilter";
-  popupEl.style.left = (rect.left - 8) + "px"; popupEl.style.top = (rect.bottom + 6) + "px";
+  popupEl.style.left = Math.max(8, rect.left - 8) + "px"; popupEl.style.top = (rect.bottom + 6) + "px";
   const existing = state.rowFilters.find(f => f.column === col.code);
-  const numericOps = [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["ne","≠"],["between","区间"]];
-  const stringOps  = [["ilike","包含"],["eq","等于"],["ne","不等"],["in","多选"]];
-  const ops = (col.data_type === "string") ? stringOps : numericOps;
+  const initMode = (existing?.op === "in" && Array.isArray(existing.value)) ? "values" : "predicate";
   popupEl.innerHTML = `
-    <h4>${col.label} · 列筛选</h4>
-    <div class="ctl">
-      <select id="cfOp">${ops.map(([v,l]) => `<option value="${v}"${existing?.op===v?" selected":""}>${l}</option>`).join("")}</select>
-      <input id="cfVal" placeholder="${col.data_type==="string"?'例：拿铁':'例：5000'}" value="${existing?.value ?? ""}" />
+    <div class="mode-tabs">
+      <div class="mode-tab ${initMode==='predicate'?'on':''}" data-mode="predicate">谓词模式</div>
+      <div class="mode-tab ${initMode==='values'?'on':''}" data-mode="values">列值挑选 (去重 · 多选)</div>
     </div>
+    <h4 style="margin-top:4px;">${col.label} · 列筛选</h4>
+    <div id="cfBody"></div>
     <div class="btns">
       <button class="btn sm ghost" id="cfClear">清除</button>
       <button class="btn sm primary" id="cfApply">应用</button>
     </div>`;
   document.body.appendChild(popupEl);
-  popupEl.querySelector("#cfVal").focus();
+
+  let mode = initMode;
+  let pickedValues = (existing?.op === "in" && Array.isArray(existing.value)) ? [...existing.value] : [];
+
+  function renderBody() {
+    const body = popupEl.querySelector("#cfBody");
+    if (mode === "predicate") {
+      const numericOps = [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["ne","≠"],["between","区间"]];
+      const stringOps  = [["ilike","包含"],["eq","等于"],["ne","不等"]];
+      const ops = (col.data_type === "string") ? stringOps : numericOps;
+      const ph = col.data_type === "string" ? "例：拿铁" : "例：5000";
+      const initVal = (existing && existing.op !== "in") ? (existing.value ?? "") : "";
+      body.innerHTML = `
+        <div class="ctl">
+          <select id="cfOp">${ops.map(([v,l]) => `<option value="${v}"${existing?.op===v?" selected":""}>${l}</option>`).join("")}</select>
+          <input id="cfVal" placeholder="${ph}" value="${initVal}" />
+        </div>
+        <div style="color:var(--muted);font-size:11px;margin-top:6px;">区间用 ~ 分隔，例 1000~5000</div>`;
+      body.querySelector("#cfVal").focus();
+    } else {
+      body.innerHTML = `
+        <div style="color:var(--muted);font-size:11px;margin-bottom:6px;">显示该列<b>去重后</b>的可选值（带出现次数）。多选 = SQL <code>IN (…)</code> 谓词。</div>
+        <input class="distinct-search" placeholder="搜索值…" id="dvSearch" />
+        <div class="pick-all"><a id="dvAll">全选</a><a id="dvNone">全不选</a><a id="dvInvert">反选</a><span style="margin-left:auto;color:var(--muted);" id="dvCount"></span></div>
+        <div class="distinct-list" id="dvList"><div style="padding:8px;color:var(--muted);">加载中…</div></div>`;
+      api(`/api/reports/daily_sales/distinct`, { column: col.code }).then(r => {
+        const list = popupEl.querySelector("#dvList");
+        const renderList = (filter="") => {
+          list.innerHTML = "";
+          const items = r.items.filter(x => !filter || String(x.label).toLowerCase().includes(filter.toLowerCase()));
+          for (const it of items) {
+            const lab = document.createElement("label");
+            const cb = document.createElement("input"); cb.type="checkbox";
+            cb.checked = pickedValues.includes(it.value);
+            cb.onchange = () => {
+              if (cb.checked && !pickedValues.includes(it.value)) pickedValues.push(it.value);
+              if (!cb.checked) pickedValues = pickedValues.filter(v => v !== it.value);
+              popupEl.querySelector("#dvCount").textContent = `已选 ${pickedValues.length} / ${r.items.length}`;
+            };
+            const txt = document.createElement("span"); txt.textContent = it.label;
+            const ct = document.createElement("span"); ct.className = "ct"; ct.textContent = `×${it.count}`;
+            lab.append(cb, txt, ct); list.appendChild(lab);
+          }
+          if (!items.length) list.innerHTML = `<div style="padding:8px;color:var(--muted);">无匹配</div>`;
+          popupEl.querySelector("#dvCount").textContent = `已选 ${pickedValues.length} / ${r.items.length}`;
+        };
+        renderList();
+        popupEl.querySelector("#dvSearch").oninput = e => renderList(e.target.value);
+        popupEl.querySelector("#dvAll").onclick    = () => { pickedValues = r.items.map(x => x.value); renderList(popupEl.querySelector("#dvSearch").value); };
+        popupEl.querySelector("#dvNone").onclick   = () => { pickedValues = []; renderList(popupEl.querySelector("#dvSearch").value); };
+        popupEl.querySelector("#dvInvert").onclick = () => { const all = r.items.map(x => x.value); pickedValues = all.filter(v => !pickedValues.includes(v)); renderList(popupEl.querySelector("#dvSearch").value); };
+      });
+    }
+  }
+  popupEl.querySelectorAll(".mode-tab").forEach(t => {
+    t.onclick = () => {
+      mode = t.dataset.mode;
+      popupEl.querySelectorAll(".mode-tab").forEach(x => x.classList.toggle("on", x === t));
+      renderBody();
+    };
+  });
+  renderBody();
+
   popupEl.querySelector("#cfApply").onclick = () => {
-    const op = popupEl.querySelector("#cfOp").value;
-    let val = popupEl.querySelector("#cfVal").value;
     state.rowFilters = state.rowFilters.filter(f => f.column !== col.code);
-    if (val) {
-      if (op === "in")   val = val.split(",").map(s=>s.trim());
-      if (op === "between") val = val.split("~").map(s=>+s.trim());
-      else if (col.data_type !== "string") val = +val;
-      state.rowFilters.push({column: col.code, op, value: val});
+    if (mode === "predicate") {
+      const op = popupEl.querySelector("#cfOp").value;
+      let val = popupEl.querySelector("#cfVal").value;
+      if (val) {
+        if (op === "between") val = val.split("~").map(s=>+s.trim());
+        else if (col.data_type !== "string") val = +val;
+        state.rowFilters.push({column: col.code, op, value: val});
+      }
+    } else {
+      if (pickedValues.length) {
+        state.rowFilters.push({column: col.code, op: "in", value: pickedValues});
+      }
     }
     closePopup(); state.page = 1; refresh();
   };
@@ -1833,7 +2136,7 @@ function toast(msg) {
 /* ════════════════════════════════════════════════════════════════════
    Refresh
    ════════════════════════════════════════════════════════════════════ */
-async function refresh() {
+function buildFilterParams() {
   const cfg = state.config;
   const params = {};
   for (const f of cfg.filters) {
@@ -1861,14 +2164,24 @@ async function refresh() {
         if (arr.length) params[f.param.value] = arr.map(x => x.value ?? x).join(",");
         break;
       }
-      default:  // flat_dropdown, hierarchy_dropdown, search_dropdown
+      default:
         if (v.value != null) params[f.param.value] = v.value;
         else if (typeof v !== "object") params[f.param.value] = v;
     }
   }
+  return params;
+}
+
+async function refresh() {
+  const cfg = state.config;
+  const params = buildFilterParams();
   params.version = state.version;
-  params.page = state.page; params.page_size = state.page_size;
-  // sort: prepend _row_favorite:desc when row_favorite enabled
+  // 分页模式：server=传分页参数；client/none=不传，后端返全量；前端再切片
+  if (state.pagingMode === "server") {
+    params.page = state.page; params.page_size = state.page_size;
+  } else {
+    params.paging = "none";
+  }
   const sorts = [];
   if (cfg.primary_view.row_favorite?.sort_on_top) sorts.push("_row_favorite:desc");
   if (state.sort) sorts.push(`${state.sort.field}:${state.sort.dir}`);
@@ -1876,8 +2189,22 @@ async function refresh() {
   if (state.rowFilters.length) params.row_filter = JSON.stringify(state.rowFilters);
 
   const r = await api(cfg.primary_view.endpoint, params);
-  state.rows = r.items; state.total = r.total; state.totals = r.extras?.totals ?? null;
+  state.allRows = r.items;
+  state.totals = r.extras?.totals ?? null;
   state.version_used = r.version_used;
+  // 前端切片
+  if (state.pagingMode === "client") {
+    state.total = r.items.length;
+    const start = (state.page - 1) * state.page_size;
+    state.rows = r.items.slice(start, start + state.page_size);
+  } else if (state.pagingMode === "none") {
+    state.total = r.items.length;
+    state.rows = r.items;
+  } else {
+    state.total = r.total;
+    state.rows = r.items;
+  }
+  renderKpi();
   renderTable();
 }
 
@@ -1928,8 +2255,119 @@ async function applyPreset(key) {
   });
   document.getElementById("verPill").onclick = openVersionPopup;
   document.getElementById("btnPreset").onclick = openPresetPopup;
+  document.getElementById("vtPill").onclick = openViewTemplatePopup;
+  document.getElementById("btnTree").onclick = async () => {
+    state.treeMode = !state.treeMode;
+    document.getElementById("btnTree").classList.toggle("primary", state.treeMode);
+    // 切到树状时强制把全量行拉一次（如果之前是服务端分页）
+    if (state.treeMode && state.pagingMode === "server") {
+      state.pagingMode = "client";
+      document.getElementById("pagingMode").value = "client";
+      toast("树状模式 · 自动切到 客户端分页 (后端返全量)");
+    }
+    await refresh();
+  };
+  document.getElementById("pagingMode").addEventListener("change", async e => {
+    state.pagingMode = e.target.value;
+    state.page = 1;
+    await refresh();
+  });
   window.addEventListener("resize", measureHeaderHeights);
 })();
+
+/* ════════════════════════════════════════════════════════════════════
+   View templates —— 顶栏 🎨 视图
+   ════════════════════════════════════════════════════════════════════ */
+async function openViewTemplatePopup() {
+  closePopup();
+  const rect = document.getElementById("vtPill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = (rect.right - 360) + "px";
+  popupEl.style.top  = (rect.bottom + 6) + "px";
+  popupEl.style.minWidth = "360px";
+
+  // 从"后端"拉取自定义模板
+  const remote = await api("/api/view_templates/daily_sales");
+  popupEl.innerHTML = `
+    <div class="popup-head"><div class="row">
+      <b style="color:var(--text);">视图模板</b>
+      <span class="audit-mini-help">前端内置 + 后端动态返回；切换即应用列/密度/分页/树状/KPI</span>
+    </div></div>
+    <div style="padding:6px 0;">
+      <div style="padding:4px 12px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;">内置 (前端)</div>
+      <div id="vtBuiltin"></div>
+      <div style="padding:4px 12px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-top:6px;">从后端拉取</div>
+      <div id="vtRemote"></div>
+    </div>`;
+  document.body.appendChild(popupEl);
+  fill(popupEl.querySelector("#vtBuiltin"), VIEW_TEMPLATES.builtin);
+  fill(popupEl.querySelector("#vtRemote"),  remote.items);
+
+  function fill(host, list) {
+    for (const t of list) {
+      const o = document.createElement("div"); o.className = "opt";
+      if (t.code === CURRENT_VIEW_TEMPLATE) o.classList.add("sel");
+      const lbl = document.createElement("span"); lbl.className = "lbl";
+      lbl.innerHTML = `<b>${t.name}</b><div class="meta">${describeTemplate(t)}</div>`;
+      const tag = document.createElement("span");
+      tag.className = t.source === "backend" ? "badge-rem" : "badge-loc";
+      tag.style.padding = "1px 6px"; tag.style.borderRadius = "3px"; tag.style.fontSize = "10px";
+      tag.textContent = t.source === "backend" ? "后端" : "内置";
+      o.append(lbl, tag);
+      o.onclick = async () => { closePopup(); await applyViewTemplate(t); };
+      host.appendChild(o);
+    }
+  }
+}
+function describeTemplate(t) {
+  const c = t.config; const bits = [];
+  bits.push(`密度: ${c.density}`);
+  bits.push(`分页: ${c.paging_mode || "server"}/${c.page_size || 50}`);
+  if (c.tree_mode) bits.push("树状");
+  if (c.show_kpi)  bits.push("KPI");
+  if (c.only_columns) bits.push(`${c.only_columns.length} 列`);
+  if (c.default_sort)  bits.push(`默认排序: ${c.default_sort.field}:${c.default_sort.dir}`);
+  return bits.join(" · ");
+}
+async function applyViewTemplate(t) {
+  CURRENT_VIEW_TEMPLATE = t.code;
+  const c = t.config;
+  state.density = c.density || "normal";
+  state.pagingMode = c.paging_mode || "server";
+  state.page_size  = c.page_size  || 50;
+  state.treeMode   = !!c.tree_mode;
+  state.showKpi    = !!c.show_kpi;
+  state.page = 1;
+  // sync UI controls
+  document.querySelectorAll("#density button").forEach(b => b.classList.toggle("on", b.dataset.d === state.density));
+  document.getElementById("pagingMode").value = state.pagingMode;
+  document.getElementById("btnTree").classList.toggle("primary", state.treeMode);
+  document.getElementById("vtLabel").textContent = t.name;
+  const src = document.getElementById("vtSrc");
+  src.className = t.source === "backend" ? "badge-rem" : "badge-loc";
+  src.textContent = t.source === "backend" ? "后端" : "内置";
+  // only_columns 覆盖
+  if (c.only_columns) {
+    const order = c.only_columns;
+    const allLeaves = [];
+    function walk(n) { if (!n.children) allLeaves.push(n); else n.children.forEach(walk); }
+    state.config.columns.summary.header_tree.forEach(walk);
+    USER_PREFS.summary = allLeaves.map(l => {
+      const idx = order.indexOf(l.code);
+      return {
+        field_code: l.code,
+        is_visible: idx >= 0,
+        order_idx: idx >= 0 ? idx + 1 : 999,
+        pinned: l.default_pinned ?? "none"
+      };
+    });
+  } else {
+    USER_PREFS.summary = [];   // 恢复后端默认
+  }
+  if (c.default_sort) state.sort = { ...c.default_sort };
+  toast("已应用视图：" + t.name);
+  await refresh();
+}
 
 function openPresetPopup() {
   closePopup();

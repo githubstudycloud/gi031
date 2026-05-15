@@ -243,6 +243,46 @@
 
 预留表，本期不实现。
 
+### 3.5 `view_template` —— 视图模板
+
+视图模板是"一组 UI 预设"——列可见性 / 列顺序 / 密度 / 分页模式 / 排序 / 是否开 KPI / 是否开树状。**前端有内置默认几个**（不进 DB），**复杂自定义模板**入库由后端按 user/role/scope 动态返回，前端切换即应用。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` PK | bigserial | |
+| `code` | text | 唯一编码，例 `weekly_finance` |
+| `name` | text | 展示名 |
+| `report_type` FK | text | 归属报表（nullable 表示通用） |
+| `scope` | enum(`global`,`org`,`role`,`user`) | 可见范围 |
+| `scope_owner` | text | 当 scope ≠ global：组织 / 角色 / 用户 ID |
+| `config` | jsonb | 见下 |
+| `is_active` | bool | |
+| `sort_order` | int | 在列表中的展示顺序 |
+
+**`config` 形态**：
+
+```jsonc
+{
+  "density": "compact|normal|loose",
+  "page_size": 50,
+  "paging_mode": "server|client|none",
+  "tree_mode": true,
+  "show_kpi": true,
+  "kpi": [
+    { "label":"APP GMV", "source":"totals.gmv_app", "format":{"kind":"number","unit":"¥"} },
+    { "label":"Web GMV", "source":"totals.gmv_web", "format":{"kind":"number","unit":"¥"} }
+  ],
+  "only_columns": ["region_code","gmv_app","gmv_web","gmv_store","orders","refund"],
+  "default_sort": {"field":"refund","dir":"desc"},
+  "default_filter_values": {
+    "business_date": {"preset":"yesterday"}
+  }
+}
+```
+
+> "前端内置模板"在前端代码里硬编码（如：默认 / 紧凑 / 看板 / 维度树状），不查 DB；切换它们是纯前端行为，无网络请求。
+> "后端模板"由 `GET /api/view_templates/{report_type}` 拉取，按 scope 过滤；切换它们是一次轻量 GET 后前端套用。
+
 ## 4. 流程定义表
 
 ### 4.1 `flow_def`
@@ -297,6 +337,33 @@
 ### 4.5 `flow_step_run`
 
 每个分支一行；用来失败重跑、看哪个来源失败。
+
+## 4.5 维度行的树状结构
+
+部分报表的维度列天然是**层级**：区域 (大区/省/市/区)、组织 (集团/事业部/部门/小组)、品类 (一级/二级/三级)。前端表格希望像树控件一样支持父节点展开/折叠，父节点显示**聚合值**。
+
+实现路径有两种：
+
+**A. 客户端聚合 (本期默认)**
+- 后端返回**叶子行**（如 region × product 粒度），前端按 `field_def.dimension_path` 路径分组并计算父节点聚合。
+- 适合数据量 ≤ 1w 行的场景。
+- `field_def` 新增字段：
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `dimension_path_codes` | text[] | 该字段属于哪个维度链，例 `['country','area','province','city']`；只对维度列有意义 |
+| `dimension_level` | int | 在路径中的层级 (1-based) |
+
+**B. 服务端聚合 (V1.1)**
+- 后端按 `?row_tree=region` 把聚合行也算好直接返回，每行带 `_depth` / `_treeKey` / `_treeParent` / `_is_agg`。
+- 适合 fact 行数 > 1w 或聚合规则复杂（如带权平均、唯一计数）的场景。
+- API 见 03-api §2.1.3。
+
+**聚合规则**（默认）：
+- `is_measure = true` 且 `data_type ∈ {int, decimal}`：sum
+- `data_type = bool`：max（任一为真则聚合为真）
+- `percent / rate` 列：先聚合分子分母再算，或简单 mean
+- `field_def.aggregation` 可手工指定 `sum|avg|min|max|count|count_distinct|weighted_avg|none`
 
 ## 5. 事实 / 版本 / 快照 / 来源标记（按报表类型）
 

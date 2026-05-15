@@ -616,7 +616,126 @@ export function buildQueryParams(filters: FilterSpec[], values: Record<string, u
 - 表格按 ARIA 规范实现键盘导航（方向键 / Home/End/PgUp/PgDn）。
 - 下拉按 combobox 模式（aria-controls / aria-expanded / aria-activedescendant）。
 
-## 13. 验收 checklist（用 chrome-devtools-mcp 跑）
+## 13. 维度行树状渲染
+
+第一个维度列（如 `region_code`）若启用"行树状"，渲染规则：
+
+1. 行数据每条带 `_depth` / `_tree_key` / `_tree_parent` / `_is_aggregate` / `_has_children` / `_tree_label`。
+2. 维护一个 `expandedTreeKeys: Set<string>`，默认根节点展开。
+3. `visibleRows = rows.filter(r => 所有祖先都在 expandedTreeKeys 内)`
+4. 第一列单元格：
+   - `<span class="tree-indent" style="width: {depth*16}px"></span>`
+   - `<span class="tree-caret">▾ / ▸ / · </span>` （有子且展开/有子未展开/叶子）
+   - `<span>{_tree_label}</span>`
+5. 聚合行整行加 class `agg-d{depth}`，背景渐深、字体加粗；不显示收藏 ★ 和审计徽章；下钻禁用。
+6. 度量列：聚合行用 `_is_aggregate=true` 时仍按 `display` 格式化，但服务端已算好聚合值；客户端模式则前端 sum/avg。
+
+```ts
+// Vue 3
+const visible = computed(() => {
+  if (!treeMode.value) return rows.value;
+  const expanded = expandedKeys.value;
+  return rows.value.filter(r => {
+    let cur = r._tree_parent;
+    while (cur != null) {
+      if (!expanded.has(cur)) return false;
+      cur = rowMap.value.get(cur)?._tree_parent ?? null;
+    }
+    return true;
+  });
+});
+```
+
+React 等价写法用 `useMemo`。两端共享 `visibleTreeRows()` 纯函数。
+
+## 14. 分页模式 (服务端 / 客户端 / 关闭)
+
+| 模式 | 状态 | 翻页/排序时 |
+|---|---|---|
+| `server` | 后端切片；前端只缓存当前页 | 每次都 refetch |
+| `client` | 后端一次返全量；前端 `state.allRows` 缓存，`state.rows` 是切片 | 不 refetch，本地切片 |
+| `none`   | 全量直接展示 | 不切片，不翻页 |
+
+```ts
+async function refresh() {
+  const params = buildFilterParams();
+  if (pagingMode === 'server') {
+    params.page = state.page; params.page_size = state.page_size;
+  } else {
+    params.paging = 'none';
+  }
+  const r = await http.get(endpoint, { params });
+  state.allRows = r.data.data.items;
+  if (pagingMode === 'client') {
+    state.rows = r.data.data.items.slice((state.page-1)*state.page_size, state.page*state.page_size);
+  } else {
+    state.rows = r.data.data.items;
+  }
+}
+```
+
+切换模式不重置筛选/排序；切到 `client` 后翻页只动 `state.rows` 切片不发请求。
+
+## 15. 视图模板 (前端内置 + 后端动态)
+
+### 15.1 接入策略
+
+```ts
+const BUILTIN: ViewTemplate[] = [
+  { code:'default', name:'默认',     source:'frontend_builtin', config:{...} },
+  { code:'compact', name:'紧凑',     source:'frontend_builtin', config:{ density:'compact', page_size:100 } },
+  { code:'kanban',  name:'看板',     source:'frontend_builtin', config:{ show_kpi:true, kpi:[...] } },
+  { code:'tree',    name:'维度树状', source:'frontend_builtin', config:{ tree_mode:true, paging_mode:'client', page_size:200 } }
+];
+
+const remoteTemplates = useQuery(['view-templates', type],
+  () => http.get(`/api/view_templates/${type}`).then(r => r.data.data.items));
+
+const allTemplates = computed(() => [...BUILTIN, ...(remoteTemplates.data ?? [])]);
+```
+
+### 15.2 应用模板 (一个函数搞定)
+
+```ts
+async function applyTemplate(t: ViewTemplate) {
+  state.density     = t.config.density     ?? 'normal';
+  state.pagingMode  = t.config.paging_mode ?? 'server';
+  state.page_size   = t.config.page_size   ?? 50;
+  state.treeMode    = !!t.config.tree_mode;
+  state.showKpi     = !!t.config.show_kpi;
+  state.kpiDefs     = t.config.kpi ?? null;
+
+  if (t.config.only_columns) {
+    // 临时覆盖个人列偏好（不入库）
+    state.tempColumnOverride = t.config.only_columns.map((code, idx) => ({
+      field_code: code, is_visible: true, order_idx: idx + 1
+    }));
+  } else {
+    state.tempColumnOverride = null;
+  }
+  if (t.config.default_sort) state.sort = { ...t.config.default_sort };
+
+  await refresh();
+}
+```
+
+### 15.3 Vue 3 与 React 18 都能干？是的
+
+整套机制完全是**框架无关的 JSON-driven UI**：
+- 服务端是普通 REST，返回 JSON。
+- 客户端只需要做三件事——`fetch config + templates`、按 `header_tree` 渲染嵌套 `<thead>`、按 `kind` 渲染过滤器组件。
+- 这些都是基本的 DOM 操作 + 状态管理，**Vue 的 Composition API + Pinia** 和 **React 的 hooks + Zustand/Redux** 都能 1:1 实现。
+
+两端复用的纯函数（共享 TS 库 `@gi031/contract-ts`）：
+- `mergeColumns(headerTree, prefs) → MergedNode[]`
+- `buildHeaderMatrix(tree) → th 二维数组`
+- `visibleTreeRows(rows, expanded) → 可见叶子+聚合`
+- `buildQueryParams(filters, values, pagingMode) → URLSearchParams`
+- `applyParamMapping(mapping, ctx) → 下钻请求 body`
+
+框架差异只在**渲染语法**和**状态管理库**上；业务逻辑 0 重复。建议两端用同一组 `*.spec.ts` 单测覆盖纯函数。
+
+## 16. 验收 checklist（用 chrome-devtools-mcp 跑）
 
 - [ ] 打开 `/reports/daily_sales`，network 面板能看到 `/config` 一次、`/versions` 一次、`/summary` 一次。
 - [ ] 表头展示 3 层结构（销售 > GMV 分渠道 > 线上/线下 > APP/Web 等）；滚动表格时所有表头行都保持吸顶。
@@ -628,3 +747,8 @@ export function buildQueryParams(filters: FilterSpec[], values: Record<string, u
 - [ ] 数据行 ⭐ → 该行置顶；刷新后仍置顶。
 - [ ] 版本选择器：当天有 v3/v2/v1；默认 v3；切到 v2 后页面顶部出现红色"历史版本"横幅。
 - [ ] 修改 `field_def.is_hidden = true` → 重拉 config（version+1） → 该列从列选择器消失，但事实表数据未删。
+- [ ] **树状行**：点 🌲 行树状 → 第一列出现 ▾ caret 与缩进；展开"全国 → 华东 → 上海" 看到 P001-P008 产品行；聚合行字体加粗、有背景色、无 ⭐ 与审计徽章。
+- [ ] **分页模式**：切到"客户端 (后端返全量)" → network 看到 `paging=none` 请求；本地翻页不再发请求；切回服务端 → 翻页恢复带 `page/page_size`。
+- [ ] **列值去重筛选**：点表头 ▽ → "列值挑选" tab → 拉到去重值列表（带 ×N 出现次数）+ 全选/反选 → 多勾几个 → 应用 → 行数减少。
+- [ ] **视图模板**：点 🎨 切换"看板 (KPI)" → 顶部出现 4 张 KPI 卡片；切"财务总监周报"（后端模板）→ 列减到 6 列、自动开树状、page_size=200、默认按退款排序。
+- [ ] 切回"默认"内置模板 → KPI 消失、列恢复、树状关闭。

@@ -445,6 +445,81 @@ GET /api/reports/daily_sales/versions?date_from=2026-05-10&date_to=2026-05-13
 
 响应同 §2.1.2，但 `items` 是明细行（订单粒度），且包含 drilldown 的 `header_tree` 已在 `/config` 中预声明。
 
+### 2.1.3 行树状 `row_tree` 参数（V1.1 服务端模式）
+
+```
+GET /api/reports/daily_sales/summary?row_tree=region&...
+```
+
+`row_tree=<dim_chain_code>`：服务端把指定维度链做层级聚合，返回的 `items` 同时包含**叶子行**与**聚合行**，每行附：
+
+```jsonc
+{
+  "_depth": 2,                  // 0=根聚合；max=叶子
+  "_tree_key": "CN-EAST/CN-31",
+  "_tree_parent": "CN-EAST",
+  "_is_aggregate": true,        // false=叶子
+  "_has_children": true,
+  "_tree_label": "上海 (CN-31)"
+}
+```
+
+聚合行的度量列由 `field_def.aggregation` 决定（sum / avg / weighted_avg ...）。
+
+如果 `row_tree` 缺省 = 不做层级聚合（行扁平返回）；前端要么不开树状，要么开"客户端聚合"自己组装（见 02-data §4.5）。
+
+### 2.1.4 分页模式 `paging`
+
+| 模式 | 客户端如何传 | 服务端行为 | 适用 |
+|---|---|---|---|
+| **server** (默认) | `page=N&page_size=M` | 用 `LIMIT/OFFSET`；返当前页 + total | 数据量大、首屏快 |
+| **client** | `paging=none` | 返全量（受 `max_rows` 硬上限，例 10000） | 数据量中等；前端切片省后端往返 |
+| **none** | `paging=none` | 同上 | 一次性看完，比如导出前预览 |
+
+后端**永远支持** `paging=none`，但**应**对返回行数加 cap（10k）并在 `meta.capped:true` 时提示前端"还有 N 行未返回"。
+
+前端 `primary_view.paging.default_mode` 配置默认模式；用户可在工具栏切换。视图模板也可固定模式。
+
+### 2.2.5 列值去重 `GET /api/reports/{type}/distinct`
+
+列筛选浮层的"列值挑选"模式调它。返回**去重值 + 出现次数**，已应用其他筛选。
+
+```
+GET /api/reports/daily_sales/distinct?column=region_code&date_from=...&product_code=...
+```
+
+```jsonc
+{
+  "code": 0,
+  "data": {
+    "column": "region_code",
+    "items": [
+      { "value":"CN-31",   "label":"上海",  "count":120 },
+      { "value":"CN-3205", "label":"苏州",  "count":86 },
+      { "value":"CN-44",   "label":"广东",  "count":92 },
+      { "value":"CN-11",   "label":"北京",  "count":78 }
+    ],
+    "truncated": false   // 当 distinct 值 > 1000 时为 true，提示前端补"输入搜索"
+  }
+}
+```
+
+服务端实现：
+```sql
+SELECT region_code AS value, ANY_VALUE(region_label) AS label, COUNT(*) AS count
+FROM report_fact_daily_sales
+WHERE <已应用的筛选>
+GROUP BY region_code
+ORDER BY count DESC
+LIMIT 1000;
+```
+
+前端拿到后渲染勾选列表（带搜索 + 全选/全不选/反选），用户多选后等价生成一个 `row_filter` 条目：
+
+```jsonc
+{ "column":"region_code", "op":"in", "value":["CN-31","CN-3205"] }
+```
+
 ### 2.4 `GET /api/reports/{type}/lineage`
 
 可选，按 `(business_date, business_key columns)` 返回某一行某列来自哪个 `snapshot_id`，给"溯源"按钮用。
@@ -546,6 +621,57 @@ GET /api/reports/daily_sales/lineage
 ```
 
 ### 4.5 `DELETE /api/users/me/columns/{report_type}?view=summary`
+
+---
+
+## 4A. 视图模板 `/api/view_templates/{report_type}`
+
+报表的"视图模板"是一组 UI 预设（列/密度/分页/排序/KPI/树状）。**前端有内置默认几个**，**后端按 user/role/scope 动态返回更多**，用户在顶栏 🎨 切换。
+
+### 4A.1 `GET /api/view_templates/{report_type}`
+
+```jsonc
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "code": "weekly_finance",
+        "name": "财务总监周报",
+        "source": "backend",
+        "scope": "role",
+        "config": {
+          "density":"normal", "page_size":200,
+          "paging_mode":"client", "tree_mode":true, "show_kpi":true,
+          "kpi":[
+            {"label":"APP GMV","source":"totals.gmv_app","format":{"kind":"number","unit":"¥"}},
+            {"label":"Web GMV","source":"totals.gmv_web","format":{"kind":"number","unit":"¥"}}
+          ],
+          "only_columns":["region_code","gmv_app","gmv_web","gmv_store","orders","refund"],
+          "default_sort":{"field":"refund","dir":"desc"}
+        }
+      },
+      { "code":"region_mgr", "name":"区域经理日表", "source":"backend", "scope":"role", "config": {...} }
+    ]
+  }
+}
+```
+
+### 4A.2 `PUT /api/view_templates/{report_type}` （管理员）
+
+新增或更新一个模板。`scope=user` 时由当前用户自己存；`role/org/global` 需管理员权限。
+
+### 4A.3 `DELETE /api/view_templates/{report_type}/{code}`
+
+删除模板。`scope=user` 用户自己可删；其他级别需管理员。
+
+### 4A.4 设计要点
+
+- 前端**内置模板**写死在前端代码，不查 DB（默认 / 紧凑 / 看板(KPI) / 维度树状）。
+- 后端模板 = `scope ∈ {global, org, role, user}` 的 OR 联合：当前用户能看到 global + 自己所属 org/role + 自己创建的 user 模板。
+- 视图模板**不**改变报表的 filters / columns 配置（那是 `/config` 的事）；它只改"如何展示"。
+- 应用模板 = 一次性 set 一堆前端 state（density / page_size / paging_mode / tree_mode / show_kpi / USER_PREFS.summary 覆盖 / sort）。
+- 模板与个人列定制冲突时：模板**临时覆盖**，不写入 `user_column_pref`；用户改完想保留，需手动点"另存为模板"或"保存为我的默认"。
 
 清掉个人覆盖，恢复后端默认。
 
