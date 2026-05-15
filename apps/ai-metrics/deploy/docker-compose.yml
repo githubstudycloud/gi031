@@ -1,28 +1,63 @@
+# 一键部署 ai-metrics（FastAPI + MySQL）
+#
+# 用法（公网）：
+#   cp deploy/.env.example deploy/.env       # 默认 = 公网官方源 + MySQL 8.0
+#   bash deploy/deploy.sh up
+#
+# 用法（内网，所有源走 Nexus / 私有镜像仓）：
+#   cp deploy/.env.intranet.example deploy/.env
+#   编辑 deploy/.env 改成你内网 host
+#   bash deploy/deploy.sh up
+#
+# 切 MySQL 5.7（验证兼容性）：在 .env 里设 MYSQL_IMAGE=mysql:5.7
+#
+# 环境变量（在 .env 中配置）：
+#   PYTHON_IMAGE       基础 Python 镜像
+#   MYSQL_IMAGE        MySQL 镜像 (mysql:8.0 / mysql:5.7 / harbor.intra/mysql:8.0)
+#   APT_MIRROR         Debian APT 源
+#   PIP_INDEX_URL      pip 镜像
+#   PIP_TRUSTED_HOST   pip 镜像 host（自签证书时需要）
+#   NPM_REGISTRY       npm 镜像（占位）
+#   APP_PORT           FastAPI 对外端口（默认 8001）
+#   MYSQL_PORT         MySQL 对宿主机端口（默认 3307；仅 127.0.0.1 暴露）
+#   MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD
+
 services:
   db:
-    image: mysql:8.0
+    image: ${MYSQL_IMAGE:-mysql:8.0}
     container_name: ai-metrics-db
     restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-rootpwd}"
       MYSQL_DATABASE: ai_metrics
       MYSQL_USER: ai_metrics
       MYSQL_PASSWORD: "${MYSQL_PASSWORD:-aimpwd}"
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
-    volumes:
-      - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"${MYSQL_ROOT_PASSWORD:-rootpwd}\" --silent"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 18
+      start_period: 30s
+    volumes:
+      - mysql-data:/var/lib/mysql
     ports:
-      - "127.0.0.1:3307:3306"   # 仅本机暴露；生产建议保留容器内访问
+      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"  # 仅本机暴露；远程访问走 api 容器
 
   api:
     build:
-      context: ..              # 指向 apps/ai-metrics/
+      context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        PYTHON_IMAGE:     "${PYTHON_IMAGE:-python:3.12-slim}"
+        APT_MIRROR:       "${APT_MIRROR-}"
+        PIP_INDEX_URL:    "${PIP_INDEX_URL-}"
+        PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST-}"
+        NPM_REGISTRY:     "${NPM_REGISTRY-}"
+    image: ai-metrics:${IMAGE_TAG:-local}
     container_name: ai-metrics-api
     restart: unless-stopped
     depends_on:
@@ -30,9 +65,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "mysql+pymysql://ai_metrics:${MYSQL_PASSWORD:-aimpwd}@db:3306/ai_metrics?charset=utf8mb4"
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: "${CORS_ORIGINS:-*}"
     ports:
-      - "8001:8001"
+      - "${APP_PORT:-8001}:8001"
 
 volumes:
   mysql-data: {}

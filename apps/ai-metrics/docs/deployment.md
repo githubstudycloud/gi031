@@ -8,9 +8,79 @@
 - **A. Docker Compose**（推荐 · 自带 MySQL 8.0 容器 · 一键起）
 - **B. 原生 systemd**（无 Docker · 数据库自选）
 
-## A. Docker Compose 部署 (推荐)
+## A. Docker Compose 部署 (推荐 · 一键脚本)
 
-### A.1 前置
+> v3：所有镜像源 / pip / npm / APT 都可通过 `.env` 配置自定义，**内网部署友好**。
+
+### A.0 一键命令（公网）
+
+```bash
+cd apps/ai-metrics
+cp deploy/.env.example deploy/.env       # 默认 = 公网官方源 + MySQL 8.0
+bash deploy/deploy.sh up                 # build + up + seed + simulate
+# 完成后访问 http://<host>:8001/ui/
+```
+
+### A.0' 一键命令（内网，所有源走私有仓）
+
+```bash
+cp deploy/.env.intranet.example deploy/.env
+# 编辑 deploy/.env 把 nexus.intra / harbor.intra 改成你公司实际地址
+bash deploy/deploy.sh up
+```
+
+`deploy/.env` 关键变量：
+
+| 变量 | 作用 | 默认（公网） | 内网示例 |
+|---|---|---|---|
+| `PYTHON_IMAGE` | 基础 Python 镜像 | `python:3.12-slim` | `harbor.intra/library/python:3.12-slim` |
+| `MYSQL_IMAGE`  | DB 镜像 | `mysql:8.0` | `harbor.intra/library/mysql:8.0` 或 `mysql:5.7` |
+| `APT_MIRROR`   | Debian APT 镜像 | — | `http://nexus.intra/repository/debian-proxy` |
+| `PIP_INDEX_URL`| pip 镜像 | — | `https://nexus.intra/repository/pypi-public/simple/` |
+| `PIP_TRUSTED_HOST` | pip 自签证书 host | — | `nexus.intra` |
+| `NPM_REGISTRY` | npm 镜像（占位） | — | `https://nexus.intra/repository/npm-public/` |
+| `APP_PORT` / `MYSQL_PORT` | 对外端口 | 8001 / 3307 | 同 |
+| `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD` | DB 密码 | rootpwd / aimpwd | **必改** |
+
+公网常见镜像源（粘到 `.env`）：
+
+```
+# Tsinghua
+APT_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple/
+NPM_REGISTRY=https://registry.npmmirror.com/
+# Aliyun
+APT_MIRROR=http://mirrors.aliyun.com/debian
+PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+```
+
+### A.1 deploy.sh 命令清单
+
+```bash
+bash deploy/deploy.sh init        # 生成 .env（若不存在；从 .env.example 复制）
+bash deploy/deploy.sh build       # 仅 build 镜像
+bash deploy/deploy.sh up          # build + up + seed + simulate
+bash deploy/deploy.sh down        # 停容器（保留 volume）
+bash deploy/deploy.sh nuke        # 停 + 删 + 删 volume（数据全清）
+bash deploy/deploy.sh logs        # 跟随日志
+bash deploy/deploy.sh ps          # 容器状态
+bash deploy/deploy.sh seed [N]    # 在 api 容器内重灌 N 天假数据（默认 30）
+bash deploy/deploy.sh simulate [src] [N]   # 跑模拟数据源（src=all/jira/.., N=天数）
+bash deploy/deploy.sh shell       # 进 api 容器 bash
+bash deploy/deploy.sh dbshell     # 进 mysql 容器 mysql client
+```
+
+### A.2 切 MySQL 版本（5.7 / 8.0 双向兼容）
+
+```bash
+# 用 5.7 验证兼容性
+sed -i 's|MYSQL_IMAGE=.*|MYSQL_IMAGE=mysql:5.7|' deploy/.env
+bash deploy/deploy.sh nuke && bash deploy/deploy.sh up
+```
+
+代码本身在 SQL 层避开 8.0 独占语法（无 CTE / 窗口函数 / generated column / check constraint / `utf8mb4_0900_*`），所有表统一 `utf8mb4 + utf8mb4_unicode_ci`。
+
+### A.3 前置（系统级 docker，公网/内网通用）
 
 宿主机有 `docker` + `docker compose v2`（Ubuntu 24.04 默认仓库就有）：
 
@@ -154,7 +224,31 @@ sudo systemctl status ai-metrics
 
 ---
 
-## E. 接入到现有报表平台（gi031）
+## E1. 查询独立模块部署（只读副本）
+
+`app.main_query` 是只挂查询路由的入口（**不挂** `/api/metrics/ingest*`），可以独立部署做"只读副本"：
+
+```bash
+# 在 docker 上同一镜像跑两个 service：
+# 1) 主服务（有 ingest）
+docker compose -f deploy/docker-compose.yml up -d
+# 2) 只读副本（共用同一份 DB）
+docker run -d --name ai-metrics-query \
+  --network <compose-network> \
+  -e DATABASE_URL="mysql+pymysql://ai_metrics:pwd@db:3306/ai_metrics?charset=utf8mb4" \
+  -p 8002:8001 \
+  ai-metrics:local \
+  uvicorn app.main_query:app --host 0.0.0.0 --port 8001 --workers 4
+```
+
+或更简：在容器内只用 `app.main_query` 启动：把 `docker-compose.yml` 的 `command:` 改为 `["uvicorn","app.main_query:app","--host","0.0.0.0","--port","8001","--workers","2"]`。
+
+适用场景：
+- 灰度发版（先把查询副本切到新版本验证）
+- 防止 ingest 端点被误调用改坏数据
+- 横向扩展只读副本
+
+## E2. 接入到现有报表平台（gi031）
 
 本服务遵循 [docs/design/03-api-spec](../../../docs/design/03-api-spec.md) 协议；任何兼容前端（gi031 主 prototype、Vue/React demo）都可以指向本服务的 `/api`：
 
