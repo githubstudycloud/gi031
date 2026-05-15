@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AI 度量看板 · React 18 demo</title>
+<style>
+:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--row-hover:#eff6ff}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","PingFang SC",sans-serif;font-feature-settings:"tnum" 1}
+table{font-variant-numeric:tabular-nums} .app{max-width:1500px;margin:0 auto;padding:16px 20px 24px}
+.topbar{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.topbar h1{font-size:18px;margin:0} .topbar .badge{background:#dbeafe;color:var(--primary-600);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.topbar .sub{color:var(--muted);font-size:12px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.filterbar{padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px} .field>label{font-size:11px;color:var(--text-soft);font-weight:500}
+.field-input{padding:5px 9px;min-height:30px;border:1px solid var(--border-strong);border-radius:6px;background:#fff;display:flex;gap:6px;align-items:center;min-width:200px;cursor:pointer}
+.field-input:hover{border-color:var(--primary)}
+.field-input input{border:0;outline:0;background:transparent;font:inherit}
+.chip{background:var(--primary-50);color:var(--primary-600);border-radius:999px;padding:1px 8px;font-size:12px;display:inline-flex;gap:4px;align-items:center}
+.chip .x{cursor:pointer;color:var(--muted);padding:0 2px} .chip .x:hover{color:#dc2626}
+.actions{margin-left:auto;display:flex;gap:8px}
+.btn{background:#fff;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff} .btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
+.toolbar{padding:8px 12px;display:flex;gap:12px;background:var(--panel);border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;margin-top:12px;font-size:12px;color:var(--text-soft)}
+.tableshell{background:var(--panel);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;overflow:hidden}
+.tw{overflow:auto;max-height:64vh}
+table.grid{border-collapse:separate;border-spacing:0;width:100%}
+table.grid thead th{background:#f1f5fa;border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:6px 10px;text-align:center;font-weight:600;font-size:12px;position:sticky;z-index:3;white-space:nowrap}
+table.grid thead tr:nth-child(1) th{top:0}
+table.grid thead tr:nth-child(2) th{top:32px}
+table.grid thead th.leaf{background:#e5edf7;border-bottom:2px solid #c7d2fe}
+table.grid thead th.pin-left,table.grid tbody td.pin-left,table.grid tfoot td.pin-left{position:sticky;left:0;background:inherit;z-index:2;box-shadow:1px 0 0 var(--border)}
+table.grid thead th.pin-left{z-index:4}
+table.grid tbody td{padding:7px 10px;border-bottom:1px solid #eef0f3;white-space:nowrap}
+table.grid tbody tr:nth-child(even) td{background:#fafbfd}
+table.grid tbody tr:hover td{background:var(--row-hover)}
+table.grid td.num{text-align:right} table.grid td.empty{color:var(--muted);text-align:center;font-style:italic}
+table.grid td.dim{font-weight:500}
+table.grid tfoot td{padding:8px 10px;border-top:2px solid var(--primary);background:#f3f8ff !important;font-weight:600;position:sticky;bottom:0;z-index:3}
+table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-align:right}
+.popup{position:fixed;background:#fff;border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 16px 32px rgba(15,23,42,.18);z-index:100;min-width:280px;max-width:360px}
+.popup-head{padding:8px 10px;border-bottom:1px solid var(--border)} .popup-head input{width:100%;padding:5px 9px;border:1px solid var(--border-strong);border-radius:6px;outline:0}
+.popup-body{max-height:280px;overflow:auto;padding:4px 0}
+.opt{display:flex;gap:8px;padding:5px 10px;cursor:pointer;border-radius:4px;margin:0 4px;align-items:center}
+.opt:hover{background:var(--row-hover)} .opt.sel{background:var(--primary-50);color:var(--primary-600)}
+.popup-foot{padding:6px 10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:11px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script type="module">
+import htm from "https://unpkg.com/htm@3/dist/htm.module.js";
+const { useState, useEffect, useMemo, useCallback } = React;
+const html = htm.bind(React.createElement);
+
+const API_BASE = (location.protocol === "file:") ? "http://127.0.0.1:8001" : "";
+
+/* === Shared pure functions (与 Vue demo 共享同一份逻辑) === */
+const isLeaf = n => !n.children;
+const depth  = n => isLeaf(n) ? 1 : 1 + Math.max(...n.children.map(depth));
+const leaves = n => isLeaf(n) ? [n] : n.children.flatMap(leaves);
+function buildHeaderMatrix(tree) {
+  const maxD = Math.max(...tree.map(depth));
+  const rows = Array.from({ length: maxD }, () => []);
+  const walk = (n, d) => {
+    if (isLeaf(n)) { rows[d].push({ kind: "leaf", node: n, rowSpan: maxD - d }); return; }
+    rows[d].push({ kind: "group", node: n, colSpan: leaves(n).length });
+    n.children.forEach(c => walk(c, d + 1));
+  };
+  tree.forEach(n => walk(n, 0));
+  return { rows, maxD };
+}
+function fmt(v, disp) {
+  if (v == null || v === "") return { text: "—", cls: "empty" };
+  if (!disp || disp.kind === "text") return { text: String(v), cls: "" };
+  if (disp.kind === "number") {
+    const n = Number(v); if (Number.isNaN(n)) return { text: String(v), cls: "" };
+    const s = n.toLocaleString("zh-CN", { minimumFractionDigits: disp.precision ?? 0, maximumFractionDigits: disp.precision ?? 0 });
+    return { text: (disp.unit ?? "") + (disp.thousand !== false ? s : String(n)), cls: "num" };
+  }
+  if (disp.kind === "percent") return { text: Number(v).toFixed(disp.precision ?? 1) + "%", cls: "num" };
+  return { text: String(v), cls: "" };
+}
+async function api(path, opts = {}) {
+  const r = await fetch(API_BASE + path, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (!r.ok) throw new Error("HTTP " + r.status + ": " + path);
+  return r.json();
+}
+
+function App() {
+  const [config, setConfig] = useState(null);
+  const [filterValues, setFilterValues] = useState({});
+  const [rows, setRows] = useState([]);
+  const [totalsRow, setTotalsRow] = useState(null);
+  const [error, setError] = useState("");
+  const [popup, setPopup] = useState(null);      // 'projects' | null
+  const [projOpts, setProjOpts] = useState([]);
+  const [popupQ, setPopupQ] = useState("");
+
+  const headerMatrix = useMemo(
+    () => config ? buildHeaderMatrix(config.columns.summary.header_tree) : { rows: [], maxD: 0 },
+    [config]
+  );
+  const leafCols = useMemo(
+    () => config ? config.columns.summary.header_tree.flatMap(leaves) : [],
+    [config]
+  );
+
+  const refresh = useCallback(async () => {
+    const v = filterValues, bd = v.business_date || {};
+    const projects = (v.projects || []).map(x => x.value || x);
+    const r = await api(`/api/reports/ai_metrics/summary`, {
+      method: "POST", body: JSON.stringify({
+        date_from: bd.from || null, date_to: bd.to || null,
+        project_codes: projects.length ? projects : null, paging: "none"
+      })
+    });
+    setRows(r.data.items);
+    setTotalsRow(r.data.extras?.totals_row ?? null);
+  }, [filterValues]);
+
+  const openProjects = useCallback(async (q) => {
+    setPopup("projects");
+    const r = await api(`/api/dropdowns/projects?q=${encodeURIComponent(q ?? popupQ)}`);
+    setProjOpts(r.data.items);
+  }, [popupQ]);
+
+  const toggleProject = (item) => {
+    setFilterValues(prev => {
+      const cur = prev.projects || [];
+      const idx = cur.findIndex(x => (x.value || x) === item.value);
+      const next = idx >= 0 ? cur.filter((_, i) => i !== idx) : [...cur, { value: item.value, label: item.label }];
+      return { ...prev, projects: next };
+    });
+  };
+  const projectSelected = (item) => (filterValues.projects || []).some(x => (x.value || x) === item.value);
+
+  const removeChip = (code, v) => {
+    setFilterValues(prev => ({ ...prev, [code]: (prev[code] || []).filter(x => (x.value || x) !== (v.value || v)) }));
+  };
+
+  const reset = () => {
+    const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
+    const iso = d => d.toISOString().slice(0, 10);
+    setFilterValues({ business_date: { from: iso(earlier), to: iso(today) }, projects: [] });
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await api(`/api/reports/ai_metrics/config`);
+        setConfig(cfg.data);
+        const today = new Date(), earlier = new Date(today.getTime() - 13 * 86400000);
+        const iso = d => d.toISOString().slice(0, 10);
+        setFilterValues({ business_date: { from: iso(earlier), to: iso(today) }, projects: [] });
+      } catch (e) { setError(e.message); }
+    })();
+  }, []);
+
+  useEffect(() => { if (config) refresh(); }, [config]);
+
+  // close popup on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (popup && !e.target.closest(".popup") && !e.target.closest(".field-input")) setPopup(null);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [popup]);
+
+  if (error) return html`<div class="panel" style=${{padding:"16px",color:"#dc2626"}}>⚠ 加载失败：${error}（请确保后端 8001 已启动）</div>`;
+  if (!config) return html`<div class="panel" style=${{padding:"16px"}}>加载中…</div>`;
+
+  const bd = filterValues.business_date || {};
+  return html`<div class="app">
+    <header class="topbar">
+      <h1>${config.meta.name}</h1>
+      <span class="badge">React 18 demo</span>
+      <span class="sub">config v${config.meta.version} · ${config.meta.report_type}</span>
+    </header>
+
+    <div class="panel filterbar">
+      <div class="field">
+        <label>时间段</label>
+        <div class="field-input">
+          <input type="date" value=${bd.from || ""}
+                 onChange=${e => setFilterValues(p => ({...p, business_date: {...(p.business_date||{}), from: e.target.value}}))} />
+          ~
+          <input type="date" value=${bd.to || ""}
+                 onChange=${e => setFilterValues(p => ({...p, business_date: {...(p.business_date||{}), to: e.target.value}}))} />
+        </div>
+      </div>
+      <div class="field">
+        <label>项目 (多选)</label>
+        <div class="field-input" style=${{flexWrap:"wrap", minWidth:"260px"}} onClick=${(e) => { e.stopPropagation(); openProjects(""); }}>
+          ${!(filterValues.projects || []).length && html`<span style=${{color:"var(--muted)"}}>请选择项目 …</span>`}
+          ${(filterValues.projects || []).slice(0, 4).map(v => html`
+            <span class="chip" key=${v.value||v}>
+              ${v.label || v.value}
+              <span class="x" onClick=${(e) => { e.stopPropagation(); removeChip("projects", v); }}>×</span>
+            </span>
+          `)}
+          ${(filterValues.projects || []).length > 4 && html`<span class="chip" style=${{background:"#e5e7eb",color:"var(--text-soft)"}}>+${(filterValues.projects||[]).length - 4}</span>`}
+          <span style=${{color:"var(--muted)", marginLeft:"auto"}}> ▾</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" onClick=${reset}>重置</button>
+        <button class="btn primary" onClick=${refresh}>查询</button>
+      </div>
+    </div>
+
+    <div class="toolbar"><span>${rows.length} 行 · 合计行始终吸底</span><span style=${{flex:1}}></span><span>React 18 + Hooks + UMD CDN + htm</span></div>
+    <div class="tableshell">
+      <div class="tw">
+        <table class="grid">
+          <thead>
+            ${headerMatrix.rows.map((row, ri) => html`
+              <tr key=${ri}>
+                ${row.map((cell, ci) => {
+                  if (cell.kind === "leaf") {
+                    const cls = ["leaf", cell.node.default_pinned === "left" ? "pin-left" : ""].filter(Boolean).join(" ");
+                    return html`<th key=${ci} className=${cls} rowSpan=${cell.rowSpan}>${cell.node.label}</th>`;
+                  }
+                  return html`<th key=${ci} colSpan=${cell.colSpan} style=${{background:"#e9eef7"}}>${cell.node.label}</th>`;
+                })}
+              </tr>
+            `)}
+          </thead>
+          <tbody>
+            ${rows.map(r => html`
+              <tr key=${r._domain_code_raw || r.domain_code}>
+                ${leafCols.map(c => {
+                  const f = fmt(r[c.code], c.display);
+                  const cls = [f.cls, c.default_pinned === "left" ? "pin-left" : "", c.code === "domain_code" ? "dim" : ""].filter(Boolean).join(" ");
+                  return html`<td key=${c.code} className=${cls}>${f.text}</td>`;
+                })}
+              </tr>
+            `)}
+          </tbody>
+          ${totalsRow && html`<tfoot>
+            <tr>
+              ${leafCols.map(c => {
+                const f = fmt(totalsRow[c.code], c.display);
+                const cls = [f.cls, c.default_pinned === "left" ? "pin-left" : "", c.code === "domain_code" ? "dim" : ""].filter(Boolean).join(" ");
+                return html`<td key=${c.code} className=${cls}>${f.text}</td>`;
+              })}
+            </tr>
+          </tfoot>`}
+        </table>
+      </div>
+    </div>
+
+    ${popup === "projects" && html`<div class="popup" style=${{left:"20px",top:"230px"}}>
+      <div class="popup-head">
+        <input placeholder="搜索项目…" value=${popupQ}
+               onChange=${e => { setPopupQ(e.target.value); openProjects(e.target.value); }} />
+      </div>
+      <div class="popup-body">
+        ${projOpts.map(it => html`
+          <div key=${it.value} class=${"opt " + (projectSelected(it) ? "sel" : "")}
+               onClick=${(e) => { e.stopPropagation(); toggleProject(it); }}>
+            <input type="checkbox" checked=${projectSelected(it)} onChange=${() => {}} />
+            <span style=${{flex:1}}>${it.label}</span>
+          </div>
+        `)}
+      </div>
+      <div class="popup-foot">
+        <span style=${{flex:1}}></span>
+        <button class="btn" style=${{fontSize:"11px",padding:"3px 8px"}} onClick=${() => setPopup(null)}>完成</button>
+      </div>
+    </div>`}
+  </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+</script>
+</body>
+</html>

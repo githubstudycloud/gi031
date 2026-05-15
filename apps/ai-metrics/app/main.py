@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .settings import settings
 from .db import init_db
-from .api import meta, config as config_api, data, ingest
+from .api import meta, config as config_api, data, ingest, view_templates as vt_api
 
 
 app = FastAPI(title="AI 测试度量看板", version="0.1.0")
@@ -27,14 +27,23 @@ app.include_router(meta.router,       prefix=settings.api_prefix, tags=["meta"])
 app.include_router(config_api.router, prefix=settings.api_prefix, tags=["config"])
 app.include_router(data.router,       prefix=settings.api_prefix, tags=["data"])
 app.include_router(ingest.router,     prefix=settings.api_prefix, tags=["ingest"])
+app.include_router(vt_api.router,     prefix=settings.api_prefix, tags=["view-templates"])
 
 
-# 静态前端：把 prototype/ 挂在 / 下，方便统一部署
-proto_dir = Path(__file__).parent.parent / "prototype"
-if proto_dir.exists():
-    app.mount("/ui", StaticFiles(directory=str(proto_dir), html=True), name="ui")
+# 静态前端：把 prototype/ + frontend/vue/ + frontend/react/ 挂在不同前缀下
+_root = Path(__file__).parent.parent
+for mount_path, sub in [("/ui", "prototype"), ("/vue", "frontend/vue"), ("/react", "frontend/react")]:
+    p = _root / sub
+    if p.exists():
+        app.mount(mount_path, StaticFiles(directory=str(p), html=True), name=sub.replace("/", "_"))
 
 
 @app.get("/")
 def root():
-    return {"name": "ai-metrics", "ui": "/ui/", "api": settings.api_prefix, "docs": "/docs"}
+    return {
+        "name": "ai-metrics",
+        "ui_html":  "/ui/",
+        "ui_vue":   "/vue/",
+        "ui_react": "/react/",
+        "api": settings.api_prefix, "docs": "/docs",
+    }

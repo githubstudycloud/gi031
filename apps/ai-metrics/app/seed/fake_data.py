@@ -15,8 +15,42 @@ from sqlalchemy import delete
 
 from app.db import SessionLocal, init_db
 from app.models import (
-    DimProject, DimDomain, MetricDef, AiMetric, AiMetricDetail
+    DimProject, DimDomain, MetricDef, AiMetric, AiMetricDetail, ViewTemplate
 )
+
+
+VIEW_TEMPLATES = [
+    {
+        "code": "weekly_finance", "name": "周度财务汇报",
+        "report_type": "ai_metrics", "scope": "global", "sort_order": 1,
+        "config": {
+            "density": "normal", "page_size": 200, "paging_mode": "client",
+            "show_kpi": True,
+            "kpi": [
+                {"label": "AI 用例数", "source": "totals.ai_case_count", "format": {"kind": "number", "thousand": True}},
+                {"label": "AI 入库行", "source": "totals.ai_code_lines", "format": {"kind": "number", "thousand": True, "unit": "行"}},
+                {"label": "AI 用例采纳率", "source": "totals.ai_case_adoption_rate", "format": {"kind": "percent"}},
+            ],
+            "only_columns": [
+                "domain_code", "req_count", "ai_req_count", "ai_req_coverage",
+                "ai_case_count", "ai_case_adoption_rate", "ai_code_lines"
+            ],
+            "default_sort": {"field": "ai_code_lines", "dir": "desc"},
+        }
+    },
+    {
+        "code": "script_focus", "name": "脚本专项 (技术评审)",
+        "report_type": "ai_metrics", "scope": "global", "sort_order": 2,
+        "config": {
+            "density": "compact", "page_size": 50, "paging_mode": "server",
+            "only_columns": [
+                "domain_code", "ai_script_code_ratio", "ai_code_lines",
+                "ai_code_accuracy", "new_script_ai_ratio", "new_script_count"
+            ],
+            "default_sort": {"field": "ai_code_accuracy", "dir": "desc"},
+        }
+    },
+]
 
 
 PROJECTS = [
@@ -82,6 +116,9 @@ def seed_dimensions(db: Session):
                 agg_method=agg, computed_formula=formula, weight_metric=weight,
                 drilldown_enabled=drill, is_default_visible=vis, sort_order=so,
             ))
+    if not db.query(ViewTemplate).count():
+        for vt in VIEW_TEMPLATES:
+            db.add(ViewTemplate(**vt))
     db.commit()
 
 

@@ -232,3 +232,92 @@ curl -X POST http://192.168.0.132:8001/api/metrics/ingest -H "Content-Type: appl
 当前 deployment 用 `nohup` 起的，进程 reboot 后会消失。生产环境改为：
 - **systemd**：执行 `sudo bash deploy/install_native.sh "$DATABASE_URL"`（脚本已就绪 → §B.3）
 - **Docker Compose + MySQL 8.0**：执行 §A.3（远端已装 docker）；改 `DATABASE_URL` 一行即可。
+
+---
+
+## §6 v2 部署 (systemd 注册 + view_templates + 模拟来源 + Vue/React)
+
+> 同样通过 paramiko 一锤子部署。本次新增内容：
+> - `view_template` 表 + `/api/view_templates/{report_type}` 端点 + 2 个 backend 模板
+> - `app/sources/simulate.py` 模拟 4 个数据来源（Jira / TestRail / Gitlab / Sonar）入 `ai_metric`
+> - `frontend/vue/` Vue 3 demo + `frontend/react/` React 18 demo（CDN，无构建）
+> - **systemd 单元 `ai-metrics.service`** 取代 nohup，开机自启 + 失败重启
+
+### 步骤摘要
+
+1. 打包代码（46 KB）+ SCP 上传
+2. 停掉旧 `nohup` 进程
+3. 解压覆盖（保留 `.venv` / `.env` / `*.db`）
+4. `pip install -e .` 刷新依赖（新增 `app.sources` 包）
+5. **重新 seed**（含 view_template 表）+ **跑一遍 simulate**（4 source × 2 day）
+6. `sudo cp /tmp/ai-metrics.service /etc/systemd/system/` + `systemctl daemon-reload` + `enable --now`
+
+### 验收输出
+
+```
+== install systemd unit (sudo)
+Created symlink /etc/systemd/system/multi-user.target.wants/ai-metrics.service → /etc/systemd/system/ai-metrics.service.
+active
+● ai-metrics.service - AI Metrics Dashboard (FastAPI)
+     Loaded: loaded (/etc/systemd/system/ai-metrics.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 12:53:13 CST; 2s ago
+   Main PID: 1870220 (uvicorn)
+      Tasks: 8 (limit: 19093)
+     Memory: 154.2M
+     CGroup: /system.slice/ai-metrics.service
+             ├─1870220 .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 2
+
+ss -tlnp | grep 8001
+LISTEN 0  2048  0.0.0.0:8001  0.0.0.0:*  users:(("python3",…),("uvicorn",pid=1870220,fd=3))
+
+GET / →
+{"name":"ai-metrics","ui_html":"/ui/","ui_vue":"/vue/","ui_react":"/react/","api":"/api","docs":"/docs"}
+
+GET /api/view_templates/ai_metrics →
+{"code":0,"data":{"items":[{"code":"weekly_finance","name":"周度财务汇报","scope":"global","source":"backend","config":{...}}, ...]}}
+
+GET /vue/   → HTTP/1.1 200 OK
+GET /react/ → HTTP/1.1 200 OK
+```
+
+### 访问入口
+
+| 形态 | URL |
+|------|-----|
+| 原生 HTML | http://192.168.0.132:8001/ui/ |
+| Vue 3 demo | http://192.168.0.132:8001/vue/ |
+| React 18 demo | http://192.168.0.132:8001/react/ |
+| OpenAPI / Swagger | http://192.168.0.132:8001/docs |
+| 健康检查 | http://192.168.0.132:8001/api/healthz |
+
+### 运维
+
+```bash
+# 状态
+systemctl status ai-metrics
+journalctl -u ai-metrics -f          # 实时日志
+journalctl -u ai-metrics -n 200 --no-pager
+
+# 重启 / 停 / 启
+sudo systemctl restart ai-metrics
+sudo systemctl stop ai-metrics
+sudo systemctl start ai-metrics
+
+# 改完代码后升级（dev 机）
+SSH_PASSWORD=*** python <<<'... paramiko script (见 git log 中的 v2 部署脚本)'
+
+# 拉新指标 (手动 ingest 测试)
+curl -X POST http://192.168.0.132:8001/api/metrics/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"items":[{"period_date":"2026-05-15","project_code":"proj_alpha","domain_code":"core","metric_code":"req_count","metric_value":99,"source":"hand"}]}'
+
+# 模拟来源（在远端跑，等同于"运行一次 cron"）
+ssh ubuntu@192.168.0.132 'cd /home/ubuntu/ai-metrics && .venv/bin/python -m app.sources.simulate --source all --days 1'
+```
+
+### 让模拟来源定时跑（演示用，可选）
+
+```bash
+# 装 crontab 行（每 1 小时跑一次 simulate 当天数据）
+ssh ubuntu@192.168.0.132 '(crontab -l 2>/dev/null; echo "5 * * * * cd /home/ubuntu/ai-metrics && .venv/bin/python -m app.sources.simulate --source all --days 1 >> /home/ubuntu/ai-metrics/simulate.log 2>&1") | crontab -'
+```

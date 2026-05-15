@@ -88,6 +88,21 @@ class AiMetric(Base):
     )
 
 
+class ViewTemplate(Base):
+    """视图模板：density / page_size / paging_mode / tree_mode / show_kpi / only_columns / default_sort."""
+    __tablename__ = "view_template"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    report_type: Mapped[str] = mapped_column(String(64))
+    scope: Mapped[str] = mapped_column(String(16), default="global")   # global / org / role / user
+    scope_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    config: Mapped[dict] = mapped_column(JSON)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AiMetricDetail(Base):
     """下钻明细。点击 个数 / 行数 类列时展开。"""
     __tablename__ = "ai_metric_detail"

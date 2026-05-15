@@ -95,6 +95,14 @@ table.grid tfoot td.num{text-align:right}
 
 .kbd{background:#f1f5fa;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text-soft)}
 .unit{color:var(--muted);font-size:10px;margin-left:2px}
+.vt-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;font-size:12px;border:1px solid var(--border-strong);border-radius:999px;background:#fff;cursor:pointer}
+.vt-pill:hover{border-color:var(--primary);color:var(--primary)}
+.badge-rem{background:#ede9fe;color:#6d28d9;padding:0 5px;border-radius:3px;font-size:10px}
+.badge-loc{background:#dbeafe;color:var(--primary-600);padding:0 5px;border-radius:3px;font-size:10px}
+.kpi-banner{display:flex;gap:0;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-sm);overflow:hidden}
+.kpi-card{flex:1;padding:10px 16px;border-right:1px solid var(--border)} .kpi-card:last-child{border-right:0}
+.kpi-card .kpi-label{font-size:11px;color:var(--text-soft)}
+.kpi-card .kpi-value{font-size:22px;font-weight:600;color:var(--text);margin-top:2px;line-height:1.1;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -104,8 +112,10 @@ table.grid tfoot td.num{text-align:right}
       <h1 id="title">AI 测试度量看板</h1>
       <span class="sub" id="sub"></span>
       <span class="grow"></span>
+      <span class="vt-pill" id="vtPill" title="切换视图模板">🎨 <span id="vtLabel">默认</span> <span id="vtSrc" class="badge-loc">内置</span> ▾</span>
       <span class="sub">协议：<a href="/docs" target="_blank">/docs</a> · <a href="#" id="apiInfo">API 配置</a></span>
     </header>
+    <div id="kpiBanner" style="display:none;margin-top:12px;"></div>
     <div class="panel filterbar" id="filterBar"></div>
   </div>
 
@@ -147,7 +157,27 @@ const state = {
   filterValues: {},
   sort: null,
   rows: [], totalsRow: null, total: 0,
+  viewTemplate: "default",
+  onlyColumns: null,        // 当前模板限定列，null=全部
+  showKpi: false,
+  kpiDefs: null,
 };
+
+const BUILTIN_TEMPLATES = [
+  { code:"default", name:"默认", source:"frontend_builtin",
+    config:{ density:"normal", page_size:200, paging_mode:"none" } },
+  { code:"compact", name:"紧凑", source:"frontend_builtin",
+    config:{ density:"compact", page_size:200, paging_mode:"none" } },
+  { code:"kanban",  name:"看板 (KPI)", source:"frontend_builtin",
+    config:{ density:"normal", page_size:200, paging_mode:"none", show_kpi:true,
+      kpi:[
+        {label:"AI 用例数",   source:"totals.ai_case_count",  format:{kind:"number",thousand:true}},
+        {label:"AI 入库行",   source:"totals.ai_code_lines",  format:{kind:"number",thousand:true,unit:"行"}},
+        {label:"覆盖率",      source:"totals.ai_req_coverage",format:{kind:"percent"}},
+        {label:"采纳率",      source:"totals.ai_case_adoption_rate",format:{kind:"percent"}},
+      ] } }
+];
+let REMOTE_TEMPLATES = [];
 
 async function api(path, opts = {}) {
   const r = await fetch(API_BASE + path, {
@@ -254,7 +284,9 @@ function buildMultiInput(filter) {
 let popupEl = null;
 function closePopup() { if (popupEl) { popupEl.remove(); popupEl = null; } }
 document.addEventListener("click", e => {
-  if (popupEl && !popupEl.contains(e.target) && !e.target.closest(".field-input")) closePopup();
+  if (popupEl && !popupEl.contains(e.target)
+      && !e.target.closest(".field-input")
+      && !e.target.closest(".vt-pill")) closePopup();
 });
 
 async function openMultiPopup(filter, anchor) {
@@ -309,10 +341,30 @@ async function openMultiPopup(filter, anchor) {
 
 /* === Table === */
 function renderTable() {
-  const tree = state.config.columns.summary.header_tree;
+  let tree = state.config.columns.summary.header_tree;
+  // 视图模板 only_columns 过滤：保留指定列，删空分组
+  if (state.onlyColumns && state.onlyColumns.length) {
+    const keep = new Set(state.onlyColumns);
+    function prune(n) {
+      if (!n.children) return keep.has(n.code) ? n : null;
+      const kids = n.children.map(prune).filter(Boolean);
+      return kids.length ? { ...n, children: kids } : null;
+    }
+    tree = tree.map(prune).filter(Boolean);
+  }
   const { rows: headerRows, maxD } = buildHeaderMatrix(tree);
   const leafCols = tree.flatMap(leaves);
   const tbl = document.getElementById("table"); tbl.innerHTML = "";
+  // density
+  tbl.className = "grid";
+  if (state.viewTemplate) {
+    const allTpls = [...BUILTIN_TEMPLATES, ...REMOTE_TEMPLATES];
+    const cur = allTpls.find(t => t.code === state.viewTemplate);
+    const den = cur?.config?.density;
+    if (den === "compact") tbl.classList.add("density-compact");
+    else if (den === "loose") tbl.classList.add("density-loose");
+  }
+  renderKpi();
 
   // thead
   const thead = document.createElement("thead");
@@ -501,14 +553,81 @@ document.getElementById("apiInfo").onclick = e => {
   toast(API_BASE ? "API: " + API_BASE : "同源");
 };
 
+/* === View templates === */
+function applyViewTemplate(t) {
+  state.viewTemplate = t.code;
+  const c = t.config || {};
+  state.onlyColumns = c.only_columns || null;
+  state.showKpi = !!c.show_kpi;
+  state.kpiDefs = c.kpi || null;
+  if (c.default_sort) state.sort = { ...c.default_sort };
+  document.getElementById("vtLabel").textContent = t.name;
+  const s = document.getElementById("vtSrc");
+  s.className = t.source === "backend" ? "badge-rem" : "badge-loc";
+  s.textContent = t.source === "backend" ? "后端" : "内置";
+  renderTable();
+}
+async function openVtPopup() {
+  closePopup();
+  const rect = document.getElementById("vtPill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.left = (rect.right - 320) + "px";
+  popupEl.style.top = (rect.bottom + 6) + "px";
+  popupEl.style.minWidth = "320px";
+  popupEl.innerHTML = `
+    <div class="popup-head"><b>视图模板</b></div>
+    <div style="padding:6px 0;">
+      <div style="padding:4px 12px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;">内置</div>
+      <div id="vtBuiltin"></div>
+      <div style="padding:4px 12px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-top:6px;">后端</div>
+      <div id="vtRemote"></div>
+    </div>`;
+  document.body.appendChild(popupEl);
+  const fill = (host, list) => {
+    for (const t of list) {
+      const o = document.createElement("div"); o.className = "opt";
+      if (t.code === state.viewTemplate) o.classList.add("sel");
+      const lbl = document.createElement("span"); lbl.className = "lbl";
+      lbl.innerHTML = `<b>${t.name}</b>`;
+      const tag = document.createElement("span");
+      tag.className = t.source === "backend" ? "badge-rem" : "badge-loc";
+      tag.style.padding = "1px 6px"; tag.textContent = t.source === "backend" ? "后端" : "内置";
+      o.append(lbl, tag);
+      o.onclick = () => { closePopup(); applyViewTemplate(t); };
+      host.appendChild(o);
+    }
+  };
+  fill(popupEl.querySelector("#vtBuiltin"), BUILTIN_TEMPLATES);
+  fill(popupEl.querySelector("#vtRemote"), REMOTE_TEMPLATES);
+}
+
+function renderKpi() {
+  const el = document.getElementById("kpiBanner");
+  if (!state.showKpi || !state.kpiDefs) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const totals = state.totalsRow || {};
+  el.style.display = "block";
+  const cards = state.kpiDefs.map(k => {
+    const path = (k.source || "").split(".").slice(1);
+    let v = totals; for (const p of path) v = v?.[p];
+    const t = (v == null) ? "—" : fmt(v, k.format).text;
+    return `<div class="kpi-card"><div class="kpi-label">${k.label}</div><div class="kpi-value">${t}</div></div>`;
+  }).join("");
+  el.innerHTML = `<div class="kpi-banner">${cards}</div>`;
+}
+
 (async function init() {
   try {
     const cfg = await api("/api/reports/ai_metrics/config");
     state.config = cfg.data;
     document.getElementById("title").textContent = state.config.meta.name;
     document.getElementById("sub").textContent = `config v${state.config.meta.version} · ${state.config.meta.report_type}`;
+    try {
+      const vts = await api("/api/view_templates/ai_metrics");
+      REMOTE_TEMPLATES = vts.data.items || [];
+    } catch (e) { console.warn("view_templates load failed", e); }
     initDefaults();
     renderFilterBar();
+    document.getElementById("vtPill").onclick = openVtPopup;
     await refresh();
   } catch (e) {
     document.getElementById("title").textContent = "⚠ 加载失败";
