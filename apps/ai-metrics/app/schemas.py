@@ -16,16 +16,23 @@ class DateRange(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class VersionPin(BaseModel):
+    period_date: date
+    source: str
+    version_no: int
+
+
 class SummaryRequest(BaseModel):
     date_from: date | None = None
     date_to: date | None = None
     project_codes: list[str] | None = None
-    row_dim: str = "domain"                # V1.1 可改成 "project>domain" 等
+    row_dim: Literal["domain", "project>domain"] = "domain"
     paging: Literal["server", "none"] = "server"
     page: int = 1
     page_size: int = 200
-    sort: str | None = None                # "ai_code_lines:desc"
+    sort: str | None = None                # e.g. "ai_code_lines:desc" or "domain_code:asc"
     row_filter: list[dict] | None = None
+    version_pin: list[VersionPin] | None = None   # 强制选指定 (date, source, version)
 
 
 class DistinctRequest(BaseModel):
@@ -37,11 +44,25 @@ class DistinctRequest(BaseModel):
 
 class DrilldownRequest(BaseModel):
     ref: str = "metric_drill"
-    row: dict
-    filter: dict
-    cell: dict
-    paging: dict | None = None
+    row: dict                              # {domain_code, project_code?}
+    filter: dict                           # {business_date: {from,to}, projects: [...]}
+    cell: dict                             # {column: <metric_code>}
+    paging: dict | None = None             # {page, page_size}
     sort: str | None = None
+    row_filter: list[dict] | None = None
+
+
+class VersionMarkRequest(BaseModel):
+    period_date: date
+    source: str
+    version_no: int
+    reason: str | None = None
+    valid: bool = False                    # True = unmark；False = mark invalid
+
+
+class RowFavoriteRequest(BaseModel):
+    row_key: dict                          # {domain_code: "..."} 或 {project_code, domain_code}
+    favorited: bool
 
 
 class IngestItem(BaseModel):

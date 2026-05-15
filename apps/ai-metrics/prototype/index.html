@@ -103,6 +103,24 @@ table.grid tfoot td.num{text-align:right}
 .kpi-card{flex:1;padding:10px 16px;border-right:1px solid var(--border)} .kpi-card:last-child{border-right:0}
 .kpi-card .kpi-label{font-size:11px;color:var(--text-soft)}
 .kpi-card .kpi-value{font-size:22px;font-weight:600;color:var(--text);margin-top:2px;line-height:1.1;font-variant-numeric:tabular-nums}
+.star{color:#cbd5e1;font-size:14px;user-select:none;display:inline-block;width:18px;text-align:center;line-height:1}
+.star:hover{color:#f59e0b}
+.star.on{color:#f59e0b}
+.fav-col{text-align:center !important;padding:4px !important;width:32px;min-width:32px}
+.fav-row{background:#fefce8 !important}
+.fav-row:hover{background:#fef9c3 !important}
+.funnel{display:inline-block}
+.funnel:hover{color:var(--primary) !important}
+.popup-bd{background:#fff;border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 8px 24px rgba(15,23,42,.15);padding:8px;min-width:280px;z-index:100;position:fixed}
+.popup-opt{padding:6px 10px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:8px}
+.popup-opt:hover{background:var(--row-hover)}
+.popup-opt.sel{background:var(--primary-50);color:var(--primary-600);font-weight:500}
+.popup-opt .meta{font-size:11px;color:var(--muted)}
+.ver-row{display:flex;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)}
+.ver-row .src{font-weight:500;flex:0 0 70px}
+.ver-row .vno{flex:0 0 50px;font-variant-numeric:tabular-nums}
+.ver-row.invalid{background:#fef2f2;color:#991b1b;text-decoration:line-through}
+.ver-row .act{margin-left:auto;font-size:11px;color:var(--primary);cursor:pointer}
 </style>
 </head>
 <body>
@@ -112,6 +130,8 @@ table.grid tfoot td.num{text-align:right}
       <h1 id="title">AI 测试度量看板</h1>
       <span class="sub" id="sub"></span>
       <span class="grow"></span>
+      <span class="vt-pill" id="rowDimPill" title="切换行维度">📐 <span id="rowDimLabel">领域</span> ▾</span>
+      <span class="vt-pill" id="versionPill" title="查看 / 标记数据版本">🕒 <span id="versionLabel">v: -</span> ▾</span>
       <span class="vt-pill" id="vtPill" title="切换视图模板">🎨 <span id="vtLabel">默认</span> <span id="vtSrc" class="badge-loc">内置</span> ▾</span>
       <span class="sub">协议：<a href="/docs" target="_blank">/docs</a> · <a href="#" id="apiInfo">API 配置</a></span>
     </header>
@@ -122,7 +142,16 @@ table.grid tfoot td.num{text-align:right}
   <div class="toolbar">
     <span id="rowMeta">—</span>
     <span class="grow"></span>
-    <span>提示：<span class="kbd">个数 / 入库行</span> 单元格点击下钻；末行 <b>合计</b> 始终吸底</span>
+    <span id="pageCtl" style="display:none;align-items:center;gap:6px;">
+      <button class="btn sm" id="prevPage">‹</button>
+      <span id="pageInfo" style="min-width:88px;text-align:center"></span>
+      <button class="btn sm" id="nextPage">›</button>
+      <select id="pageSizeSel" style="border:1px solid var(--border-strong);border-radius:4px;padding:3px 8px;font-size:11px;">
+        <option value="10">10 行</option><option value="25">25 行</option>
+        <option value="50" selected>50 行</option><option value="100">100 行</option>
+      </select>
+    </span>
+    <span style="margin-left:8px;">⭐ 收藏置顶 · 表头 <span class="kbd">▽</span> 列筛 · <span class="kbd">个数</span> 下钻</span>
   </div>
   <div class="tableshell">
     <div class="table-wrap"><table class="grid" id="table"></table></div>
@@ -158,9 +187,15 @@ const state = {
   sort: null,
   rows: [], totalsRow: null, total: 0,
   viewTemplate: "default",
-  onlyColumns: null,        // 当前模板限定列，null=全部
+  onlyColumns: null,
   showKpi: false,
   kpiDefs: null,
+  // V2 新增
+  rowDim: "domain",              // domain | project>domain
+  rowFilters: [],                // [{column, op, value}]
+  page: 1, pageSize: 50,
+  validVersions: { count: 0, by_date: {} },
+  userId: "demo-user",
 };
 
 const BUILTIN_TEMPLATES = [
@@ -286,7 +321,8 @@ function closePopup() { if (popupEl) { popupEl.remove(); popupEl = null; } }
 document.addEventListener("click", e => {
   if (popupEl && !popupEl.contains(e.target)
       && !e.target.closest(".field-input")
-      && !e.target.closest(".vt-pill")) closePopup();
+      && !e.target.closest(".vt-pill")
+      && !e.target.closest(".funnel")) closePopup();
 });
 
 async function openMultiPopup(filter, anchor) {
@@ -340,9 +376,23 @@ async function openMultiPopup(filter, anchor) {
 }
 
 /* === Table === */
+function visibleColumns(tree) {
+  // 按 row_dim 过滤 visible_when 列
+  const dim = state.rowDim;
+  function visit(n) {
+    if (!n.children) {
+      if (n.visible_when?.row_dim && !n.visible_when.row_dim.includes(dim)) return null;
+      return n;
+    }
+    const kids = n.children.map(visit).filter(Boolean);
+    return kids.length ? { ...n, children: kids } : null;
+  }
+  return tree.map(visit).filter(Boolean);
+}
+
 function renderTable() {
   let tree = state.config.columns.summary.header_tree;
-  // 视图模板 only_columns 过滤：保留指定列，删空分组
+  // 视图模板 only_columns 过滤
   if (state.onlyColumns && state.onlyColumns.length) {
     const keep = new Set(state.onlyColumns);
     function prune(n) {
@@ -352,10 +402,12 @@ function renderTable() {
     }
     tree = tree.map(prune).filter(Boolean);
   }
+  // row_dim 影响列可见性
+  tree = visibleColumns(tree);
+
   const { rows: headerRows, maxD } = buildHeaderMatrix(tree);
   const leafCols = tree.flatMap(leaves);
   const tbl = document.getElementById("table"); tbl.innerHTML = "";
-  // density
   tbl.className = "grid";
   if (state.viewTemplate) {
     const allTpls = [...BUILTIN_TEMPLATES, ...REMOTE_TEMPLATES];
@@ -367,9 +419,20 @@ function renderTable() {
   renderKpi();
 
   // thead
+  const rowFavEnabled = state.config.primary_view.row_favorite?.enabled;
   const thead = document.createElement("thead");
   for (let i = 0; i < maxD; i++) {
     const tr = document.createElement("tr");
+    // 第一列 ⭐ 收藏 (只在 i===0 渲染 + rowspan=maxD)
+    if (i === 0 && rowFavEnabled) {
+      const th = document.createElement("th");
+      th.className = "leaf pin-left fav-col";
+      th.style.width = "32px"; th.style.minWidth = "32px";
+      th.rowSpan = maxD;
+      th.textContent = "★";
+      th.title = "收藏置顶";
+      tr.appendChild(th);
+    }
     for (const cell of headerRows[i]) {
       const th = document.createElement("th");
       if (cell.kind === "leaf") {
@@ -386,7 +449,17 @@ function renderTable() {
         const arr = document.createElement("span"); arr.className = "arr";
         if (cell.node.sortable) arr.textContent = state.sort?.field === cell.node.code ? (state.sort.dir === "asc" ? "▲" : "▼") : "↕";
         th.append(label, arr);
-        if (cell.node.sortable) th.onclick = () => toggleSort(cell.node.code);
+        if (cell.node.sortable) th.onclick = (e) => { if (!e.target.closest('.funnel')) toggleSort(cell.node.code); };
+        // 列筛选 ▽
+        if (cell.node.row_filterable) {
+          const f = document.createElement("span"); f.className = "funnel";
+          const active = state.rowFilters.some(r => r.column === cell.node.code);
+          f.innerHTML = active ? "▼" : "▽";
+          f.style.cssText = `margin-left:4px;cursor:pointer;color:${active ? 'var(--primary)' : 'var(--muted)'};font-size:11px;`;
+          f.title = "列筛选";
+          f.onclick = (e) => { e.stopPropagation(); openColFilter(cell.node, f); };
+          th.appendChild(f);
+        }
       } else {
         th.colSpan = cell.colSpan; th.textContent = cell.node.label; th.style.background = "#e9eef7";
       }
@@ -400,13 +473,30 @@ function renderTable() {
   const tbody = document.createElement("tbody");
   for (const r of state.rows) {
     const trr = document.createElement("tr");
+    if (r._row_favorite) trr.classList.add("fav-row");
+    if (rowFavEnabled) {
+      const td = document.createElement("td");
+      td.className = "pin-left fav-col";
+      const btn = document.createElement("span");
+      btn.className = "star" + (r._row_favorite ? " on" : "");
+      btn.textContent = r._row_favorite ? "★" : "☆";
+      btn.style.cursor = "pointer";
+      btn.title = r._row_favorite ? "取消收藏" : "收藏";
+      btn.onclick = (e) => { e.stopPropagation(); toggleRowFav(r); };
+      td.appendChild(btn);
+      trr.appendChild(td);
+    }
     for (const c of leafCols) {
       const td = document.createElement("td");
-      const fm = fmt(r[c.code], c.display);
+      // 选 raw 值 (_domain_code_raw / _project_code_raw) 给 display
+      const dispVal = (c.code === "domain_code") ? r["domain_code"]
+                    : (c.code === "project_code") ? r["project_code"]
+                    : r[c.code];
+      const fm = fmt(dispVal, c.display);
       td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
-      if (c.code === "domain_code") td.classList.add("dim");
+      if (c.code === "domain_code" || c.code === "project_code") td.classList.add("dim");
       td.textContent = fm.text;
-      if (c.drilldown && c.code !== "domain_code" && r[c.code] != null) {
+      if (c.drilldown && c.code !== "domain_code" && c.code !== "project_code" && r[c.code] != null) {
         td.classList.add("click");
         td.onclick = () => openDrilldown(c, r);
       }
@@ -420,19 +510,41 @@ function renderTable() {
   if (state.totalsRow) {
     const tfoot = document.createElement("tfoot");
     const tr = document.createElement("tr");
+    if (rowFavEnabled) {
+      const td = document.createElement("td"); td.className = "pin-left fav-col"; tr.appendChild(td);
+    }
     for (const c of leafCols) {
       const td = document.createElement("td");
       const fm = fmt(state.totalsRow[c.code], c.display);
       td.className = fm.cls + (c.default_pinned === "left" ? " pin-left" : "");
-      if (c.code === "domain_code") td.classList.add("dim");
+      if (c.code === "domain_code" || c.code === "project_code") td.classList.add("dim");
       td.textContent = fm.text;
       tr.appendChild(td);
     }
     tfoot.appendChild(tr); tbl.appendChild(tfoot);
   }
 
-  // meta
-  document.getElementById("rowMeta").innerHTML = `${state.rows.length} 行 · 合计行始终吸底`;
+  renderMeta();
+  renderPagination();
+}
+
+function renderMeta() {
+  const filterBits = state.rowFilters.length ? `<span style="color:var(--primary)"> · ${state.rowFilters.length} 列筛选</span>` : "";
+  const verBits = state.validVersions.count
+    ? `<span style="color:var(--text-soft)"> · 选中 ${state.validVersions.count} 个 (日,源,版本)</span>` : "";
+  document.getElementById("rowMeta").innerHTML =
+    `共 ${state.total} 行 · 当前页 ${state.rows.length} 行${filterBits}${verBits}`;
+}
+
+function renderPagination() {
+  const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
+  const showCtrl = state.total > state.pageSize;
+  document.getElementById("pageCtl").style.display = showCtrl ? "inline-flex" : "none";
+  if (showCtrl) {
+    document.getElementById("pageInfo").textContent = `${state.page} / ${totalPages}`;
+    document.getElementById("prevPage").disabled = state.page <= 1;
+    document.getElementById("nextPage").disabled = state.page >= totalPages;
+  }
 }
 
 function toggleSort(field) {
@@ -440,13 +552,64 @@ function toggleSort(field) {
     if (state.sort.dir === "asc") state.sort.dir = "desc";
     else state.sort = null;
   } else state.sort = { field, dir: "desc" };
-  // 客户端排序（小数据）
-  state.rows.sort((a, b) => {
-    if (!state.sort) return 0;
-    const av = a[state.sort.field], bv = b[state.sort.field];
-    return ((av > bv) ? 1 : (av < bv) ? -1 : 0) * (state.sort.dir === "asc" ? 1 : -1);
+  state.page = 1;
+  refresh();
+}
+
+async function toggleRowFav(row) {
+  const isFav = !row._row_favorite;
+  const rt = state.config.meta.report_type;
+  await api(`/api/users/me/row_favorites/${rt}`, {
+    method: "POST",
+    body: JSON.stringify({ row_key: row._row_key, favorited: isFav })
   });
-  renderTable();
+  row._row_favorite = isFav;
+  toast(isFav ? "已收藏" : "取消收藏");
+  refresh();
+}
+
+/* === Column filter popup === */
+function openColFilter(col, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup";
+  popupEl.style.cssText = `position:fixed;left:${Math.max(8,rect.left-8)}px;top:${rect.bottom+6}px;background:#fff;border:1px solid var(--border-strong);border-radius:6px;box-shadow:0 8px 24px rgba(15,23,42,.15);padding:10px;z-index:100;min-width:280px;`;
+  const existing = state.rowFilters.find(f => f.column === col.code);
+  const isString = col.data_type === "string";
+  const ops = isString
+    ? [["ilike","包含"],["eq","等于"],["ne","不等"]]
+    : [["gte","≥"],["gt",">"],["lte","≤"],["lt","<"],["eq","="],["ne","≠"]];
+  popupEl.innerHTML = `
+    <h4 style="margin:0 0 8px;font-size:13px;">${col.label} · 列筛选</h4>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <select id="cfOp" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;">
+        ${ops.map(([v,l])=>`<option value="${v}"${existing?.op===v?" selected":""}>${l}</option>`).join("")}
+      </select>
+      <input id="cfVal" placeholder="${isString?'例：核心':'例：5000'}" value="${existing?.value ?? ''}"
+        style="flex:1;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;" />
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn sm ghost" id="cfClear">清除</button>
+      <span style="flex:1"></span>
+      <button class="btn sm primary" id="cfApply">应用</button>
+    </div>`;
+  document.body.appendChild(popupEl);
+  popupEl.querySelector("#cfVal").focus();
+  popupEl.querySelector("#cfApply").onclick = () => {
+    const op = popupEl.querySelector("#cfOp").value;
+    let val = popupEl.querySelector("#cfVal").value;
+    state.rowFilters = state.rowFilters.filter(f => f.column !== col.code);
+    if (val !== "") {
+      if (!isString) val = Number(val);
+      state.rowFilters.push({ column: col.code, op, value: val });
+    }
+    state.page = 1;
+    closePopup(); refresh();
+  };
+  popupEl.querySelector("#cfClear").onclick = () => {
+    state.rowFilters = state.rowFilters.filter(f => f.column !== col.code);
+    state.page = 1; closePopup(); refresh();
+  };
 }
 
 /* === Refresh === */
@@ -454,11 +617,15 @@ async function refresh() {
   const v = state.filterValues;
   const bd = v.business_date || {};
   const projects = (v.projects || []).map(x => x.value || x);
+  const sort = state.sort ? `${state.sort.field}:${state.sort.dir}` : null;
   const body = {
     date_from: bd.from || null,
     date_to: bd.to || null,
     project_codes: projects.length ? projects : null,
-    paging: "none"
+    row_dim: state.rowDim,
+    paging: "server",
+    page: state.page, page_size: state.pageSize,
+    sort, row_filter: state.rowFilters.length ? state.rowFilters : null,
   };
   const r = await api(`/api/reports/${state.config.meta.report_type}/summary`, {
     method: "POST", body: JSON.stringify(body)
@@ -466,6 +633,8 @@ async function refresh() {
   state.rows = r.data.items;
   state.totalsRow = r.data.extras?.totals_row ?? null;
   state.total = r.data.total;
+  state.validVersions = r.data.extras?.valid_versions ?? { count: 0, by_date: {} };
+  document.getElementById("versionLabel").textContent = `v: ${state.validVersions.count}`;
   renderTable();
 }
 
@@ -475,18 +644,34 @@ async function openDrilldown(col, row) {
   const spec = state.config.drilldowns[ref];
   const v = state.filterValues;
   const projects = (v.projects || []).map(x => x.value || x);
-  const body = {
-    ref, row: { domain_code: row._domain_code_raw, ...row },
-    filter: { business_date: v.business_date, projects },
-    cell: { column: col.code, value: row[col.code] },
-    paging: { page: 1, page_size: 30 }
+  // 模态状态
+  state.drillState = {
+    spec, col, row, projects,
+    page: 1, pageSize: spec.paging?.default_page_size || 25,
+    sort: spec.default_sort || null,
+    rowFilters: [],
   };
   document.getElementById("modalMask").classList.add("show");
   document.getElementById("modalTitle").textContent =
     interpolate(spec.title, { row: { ...row, domain_code: row.domain_code }, filter: v, cell: { column: col.code } });
   document.getElementById("modalSub").textContent = spec.endpoint;
-  const r = await api(spec.endpoint, { method: "POST", body: JSON.stringify(body) });
-  renderModal(spec, r.data);
+  await loadDrilldown();
+}
+
+async function loadDrilldown() {
+  const s = state.drillState; if (!s) return;
+  const v = state.filterValues;
+  const body = {
+    ref: s.spec.ref || "metric_drill",
+    row: { domain_code: s.row._domain_code_raw, project_code: s.row._project_code_raw, ...s.row },
+    filter: { business_date: v.business_date, projects: s.projects },
+    cell: { column: s.col.code, value: s.row[s.col.code] },
+    paging: { page: s.page, page_size: s.pageSize },
+    sort: typeof s.sort === "string" ? s.sort : (s.sort ? `${s.sort.field}:${s.sort.dir}` : null),
+    row_filter: s.rowFilters.length ? s.rowFilters : null,
+  };
+  const r = await api(s.spec.endpoint, { method: "POST", body: JSON.stringify(body) });
+  renderModal(s.spec, r.data);
 }
 function interpolate(tpl, ctx) {
   return tpl.replace(/\{([^}]+)\}/g, (_, path) => {
@@ -500,6 +685,7 @@ function renderModal(spec, data) {
   const { rows: headerRows, maxD } = buildHeaderMatrix(tree);
   const lc = tree.flatMap(leaves);
   const t = document.getElementById("modalTable"); t.innerHTML = "";
+  const s = state.drillState;
   const thead = document.createElement("thead");
   for (let i = 0; i < maxD; i++) {
     const tr = document.createElement("tr");
@@ -508,8 +694,37 @@ function renderModal(spec, data) {
       if (cell.kind === "leaf") {
         th.classList.add("leaf"); if (cell.rowSpan > 1) th.rowSpan = cell.rowSpan;
         if (cell.node.default_pinned === "left") th.classList.add("pin-left");
-        th.textContent = cell.node.label;
-      } else { th.colSpan = cell.colSpan; th.textContent = cell.node.label; }
+        const isSorted = (typeof s.sort === "string"
+            ? s.sort.split(",")[0].split(":")[0] === cell.node.code
+            : s.sort?.field === cell.node.code);
+        const lblWrap = document.createElement("span");
+        lblWrap.textContent = cell.node.label;
+        th.appendChild(lblWrap);
+        if (cell.node.sortable) {
+          th.classList.add("sortable");
+          const arr = document.createElement("span"); arr.className = "arr";
+          arr.textContent = isSorted ? "▼" : "↕";
+          th.appendChild(arr);
+          th.onclick = (e) => {
+            if (e.target.closest('.funnel')) return;
+            // toggle desc/asc/off
+            const cur = typeof s.sort === "string" ? s.sort.split(":") : (s.sort ? [s.sort.field, s.sort.dir] : []);
+            if (cur[0] === cell.node.code && cur[1] === "desc") s.sort = `${cell.node.code}:asc`;
+            else if (cur[0] === cell.node.code && cur[1] === "asc") s.sort = null;
+            else s.sort = `${cell.node.code}:desc`;
+            s.page = 1; loadDrilldown();
+          };
+        }
+        if (cell.node.row_filterable) {
+          const f = document.createElement("span"); f.className = "funnel";
+          const active = s.rowFilters.some(r => r.column === cell.node.code);
+          f.innerHTML = active ? "▼" : "▽";
+          f.style.cssText = `margin-left:4px;cursor:pointer;color:${active ? 'var(--primary)' : 'var(--muted)'};font-size:11px;`;
+          f.title = "列筛选";
+          f.onclick = (e) => { e.stopPropagation(); openDrillColFilter(cell.node, f); };
+          th.appendChild(f);
+        }
+      } else { th.colSpan = cell.colSpan; th.textContent = cell.node.label; th.style.background = "#e9eef7"; }
       tr.appendChild(th);
     }
     thead.appendChild(tr);
@@ -533,7 +748,66 @@ function renderModal(spec, data) {
     tbody.appendChild(trr);
   }
   t.appendChild(tbody);
-  document.getElementById("modalPag").innerHTML = `共 ${data.total} 条 · 本页 ${data.items.length} 条`;
+
+  // pagination
+  const totalPages = Math.max(1, Math.ceil(data.total / s.pageSize));
+  const filterBits = s.rowFilters.length ? ` · <span style="color:var(--primary)">${s.rowFilters.length} 列筛选</span>` : "";
+  document.getElementById("modalPag").innerHTML = `
+    共 ${data.total} 条 · 本页 ${data.items.length} 条${filterBits}
+    <span style="flex:1"></span>
+    <button class="btn sm" id="mPrev" ${s.page<=1?"disabled":""}>‹</button>
+    <span>${s.page} / ${totalPages}</span>
+    <button class="btn sm" id="mNext" ${s.page>=totalPages?"disabled":""}>›</button>
+    <select id="mPS" style="border:1px solid var(--border-strong);border-radius:4px;padding:2px 6px;">
+      ${[10,25,50,100].map(n=>`<option value="${n}"${n===s.pageSize?" selected":""}>${n} 行</option>`).join("")}
+    </select>`;
+  document.getElementById("mPrev").onclick = () => { if (s.page>1) { s.page--; loadDrilldown(); } };
+  document.getElementById("mNext").onclick = () => { s.page++; loadDrilldown(); };
+  document.getElementById("mPS").onchange = (e) => { s.pageSize = +e.target.value; s.page = 1; loadDrilldown(); };
+}
+
+function openDrillColFilter(col, anchor) {
+  closePopup();
+  const rect = anchor.getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup-bd";
+  popupEl.style.left = Math.max(8, rect.left - 8) + "px";
+  popupEl.style.top = (rect.bottom + 6) + "px";
+  const s = state.drillState;
+  const existing = s.rowFilters.find(f => f.column === col.code);
+  const isString = col.data_type === "string";
+  const ops = isString
+    ? [["ilike","包含"],["eq","等于"],["ne","不等"]]
+    : [["eq","="],["gt",">"],["gte","≥"],["lt","<"],["lte","≤"],["ne","≠"]];
+  popupEl.innerHTML = `
+    <h4 style="margin:0 0 8px;font-size:13px;">${col.label} · 列筛选</h4>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <select id="dcfOp" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;">
+        ${ops.map(([v,l])=>`<option value="${v}"${existing?.op===v?" selected":""}>${l}</option>`).join("")}
+      </select>
+      <input id="dcfVal" placeholder="${isString?'例：core':'例：1'}" value="${existing?.value ?? ''}"
+        style="flex:1;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;" />
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn sm ghost" id="dcfClear">清除</button>
+      <span style="flex:1"></span>
+      <button class="btn sm primary" id="dcfApply">应用</button>
+    </div>`;
+  document.body.appendChild(popupEl);
+  popupEl.querySelector("#dcfVal").focus();
+  popupEl.querySelector("#dcfApply").onclick = () => {
+    const op = popupEl.querySelector("#dcfOp").value;
+    let val = popupEl.querySelector("#dcfVal").value;
+    s.rowFilters = s.rowFilters.filter(f => f.column !== col.code);
+    if (val !== "") {
+      if (!isString) val = Number(val);
+      s.rowFilters.push({ column: col.code, op, value: val });
+    }
+    s.page = 1; closePopup(); loadDrilldown();
+  };
+  popupEl.querySelector("#dcfClear").onclick = () => {
+    s.rowFilters = s.rowFilters.filter(f => f.column !== col.code);
+    s.page = 1; closePopup(); loadDrilldown();
+  };
 }
 document.getElementById("modalClose").onclick = () => document.getElementById("modalMask").classList.remove("show");
 document.getElementById("modalMask").addEventListener("click", e => { if (e.target.id === "modalMask") document.getElementById("modalMask").classList.remove("show"); });
@@ -567,6 +841,79 @@ function applyViewTemplate(t) {
   s.textContent = t.source === "backend" ? "后端" : "内置";
   renderTable();
 }
+/* === Row dim popup === */
+function openRowDimPopup() {
+  closePopup();
+  const rect = document.getElementById("rowDimPill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup-bd";
+  popupEl.style.left = (rect.right - 280) + "px";
+  popupEl.style.top = (rect.bottom + 6) + "px";
+  const opts = state.config.primary_view.row_dim_options || [];
+  popupEl.innerHTML = `<h4 style="margin:0 0 6px;padding:0 6px;font-size:12px;color:var(--muted);">行维度</h4>`;
+  for (const o of opts) {
+    const div = document.createElement("div");
+    div.className = "popup-opt" + (o.code === state.rowDim ? " sel" : "");
+    div.innerHTML = `<span style="flex:1">${o.label}</span><span class="meta">约 ${o.row_count_hint} 行</span>`;
+    div.onclick = () => {
+      state.rowDim = o.code; state.page = 1;
+      document.getElementById("rowDimLabel").textContent = o.label;
+      closePopup(); refresh();
+    };
+    popupEl.appendChild(div);
+  }
+  document.body.appendChild(popupEl);
+}
+
+/* === Versions popup === */
+async function openVersionPopup() {
+  closePopup();
+  const rect = document.getElementById("versionPill").getBoundingClientRect();
+  popupEl = document.createElement("div"); popupEl.className = "popup-bd";
+  popupEl.style.left = (rect.right - 360) + "px";
+  popupEl.style.top = (rect.bottom + 6) + "px";
+  popupEl.style.minWidth = "360px";
+  popupEl.style.maxHeight = "440px";
+  popupEl.style.overflow = "auto";
+  popupEl.innerHTML = `<div style="padding:0 6px 6px;font-size:12px;color:var(--muted);">数据版本 (默认取每日每来源 latest valid)</div><div id="vList">加载中...</div>`;
+  document.body.appendChild(popupEl);
+  const bd = state.filterValues.business_date || {};
+  const q = new URLSearchParams();
+  if (bd.from) q.set("date_from", bd.from);
+  if (bd.to) q.set("date_to", bd.to);
+  const r = await api(`/api/reports/ai_metrics/versions?` + q.toString());
+  const wrap = popupEl.querySelector("#vList");
+  wrap.innerHTML = "";
+  const validKey = new Set();
+  // 算 latest valid 每个 (date, source) 的版本号 = state.validVersions.by_date[date][source]
+  for (const d of Object.keys(state.validVersions.by_date || {}))
+    for (const s of Object.keys(state.validVersions.by_date[d] || {}))
+      validKey.add(`${d}|${s}|${state.validVersions.by_date[d][s]}`);
+  for (const it of r.data.items) {
+    const row = document.createElement("div"); row.className = "ver-row" + (it.is_valid ? "" : " invalid");
+    const isPicked = validKey.has(`${it.period_date}|${it.source}|${it.version_no}`);
+    row.innerHTML = `
+      <span style="flex:0 0 86px">${it.period_date}</span>
+      <span class="src">${it.source}</span>
+      <span class="vno">v${it.version_no}</span>
+      <span style="flex:1;font-size:11px;color:var(--muted)">${isPicked ? "✓ 当前查询使用" : ""}</span>
+      <span class="act">${it.is_valid ? "标无效" : "恢复"}</span>`;
+    row.querySelector(".act").onclick = async (e) => {
+      e.stopPropagation();
+      const valid = !it.is_valid;
+      await api(`/api/reports/ai_metrics/versions/mark`, {
+        method: "POST",
+        body: JSON.stringify({
+          period_date: it.period_date, source: it.source, version_no: it.version_no,
+          valid, reason: valid ? null : "前端手工标无效"
+        })
+      });
+      toast(valid ? "已恢复" : "已标无效");
+      closePopup(); refresh();
+    };
+    wrap.appendChild(row);
+  }
+}
+
 async function openVtPopup() {
   closePopup();
   const rect = document.getElementById("vtPill").getBoundingClientRect();
@@ -627,7 +974,15 @@ function renderKpi() {
     } catch (e) { console.warn("view_templates load failed", e); }
     initDefaults();
     renderFilterBar();
+    state.rowDim = state.config.primary_view.default_row_dim || "domain";
+    document.getElementById("rowDimLabel").textContent =
+      state.config.primary_view.row_dim_options?.find(o => o.code === state.rowDim)?.label || "领域";
     document.getElementById("vtPill").onclick = openVtPopup;
+    document.getElementById("rowDimPill").onclick = openRowDimPopup;
+    document.getElementById("versionPill").onclick = openVersionPopup;
+    document.getElementById("prevPage").onclick = () => { if (state.page>1) { state.page--; refresh(); } };
+    document.getElementById("nextPage").onclick = () => { state.page++; refresh(); };
+    document.getElementById("pageSizeSel").onchange = (e) => { state.pageSize = +e.target.value; state.page = 1; refresh(); };
     await refresh();
   } catch (e) {
     document.getElementById("title").textContent = "⚠ 加载失败";

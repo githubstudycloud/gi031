@@ -88,12 +88,48 @@ class AiMetric(Base):
     metric_code: Mapped[str] = mapped_column(String(64))
     metric_value: Mapped[float] = mapped_column(Numeric(18, 4))
     source: Mapped[str] = mapped_column(String(64), default="manual")
+    # 多版本：同 (period_date, source) 一天可有多个 version_no；查询默认取 latest valid
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     __table_args__ = (
         UniqueConstraint("period_date", "project_code", "domain_code",
-                         "iteration_code", "metric_code", "source", name="uq_metric"),
+                         "iteration_code", "metric_code", "source", "version_no",
+                         name="uq_metric"),
         Index("idx_proj_domain", "project_code", "domain_code"),
         Index("idx_metric", "metric_code"),
+        Index("idx_date_source_ver", "period_date", "source", "version_no"),
+        MYSQL_TABLE_ARGS,
+    )
+
+
+class AiMetricInvalidMark(Base):
+    """标记某 (period_date, source, version_no) 失效；查询默认跳过被标失效的版本。"""
+    __tablename__ = "ai_metric_invalid_mark"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    period_date: Mapped[date] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(64))
+    version_no: Mapped[int] = mapped_column(Integer)
+    marked_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    marked_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+    __table_args__ = (
+        UniqueConstraint("period_date", "source", "version_no", name="uq_invalid"),
+        Index("idx_invalid_date_src", "period_date", "source"),
+        MYSQL_TABLE_ARGS,
+    )
+
+
+class UserRowFavorite(Base):
+    """(user, report, row_key_json) 收藏。查询时 join 给每行 _row_favorite=true。"""
+    __tablename__ = "user_row_favorite"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64))
+    report_type: Mapped[str] = mapped_column(String(64))
+    row_key: Mapped[str] = mapped_column(String(512))   # JSON-stringified, e.g. '{"domain_code":"core"}'
+    favorited_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
+    __table_args__ = (
+        UniqueConstraint("user_id", "report_type", "row_key", name="uq_row_fav"),
+        Index("idx_user_report", "user_id", "report_type"),
         MYSQL_TABLE_ARGS,
     )
 
@@ -115,7 +151,7 @@ class ViewTemplate(Base):
 
 
 class AiMetricDetail(Base):
-    """下钻明细。点击 个数 / 行数 类列时展开。"""
+    """下钻明细。点击 个数 / 行数 类列时展开。带 version_no，与 ai_metric 一致。"""
     __tablename__ = "ai_metric_detail"
     id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     period_date: Mapped[date] = mapped_column(Date)
@@ -123,15 +159,20 @@ class AiMetricDetail(Base):
     domain_code: Mapped[str] = mapped_column(String(64))
     iteration_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     metric_code: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(64), default="manual", server_default="manual")
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     detail_type: Mapped[str] = mapped_column(String(64))   # requirement / case / code_change
     ref_id: Mapped[str] = mapped_column(String(128))
     ref_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ref_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
     is_adopted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)    # high/medium/low (筛选示例)
+    author: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now)
     __table_args__ = (
         Index("idx_drill", "period_date", "project_code", "domain_code", "metric_code"),
+        Index("idx_drill_src_ver", "period_date", "source", "version_no"),
         MYSQL_TABLE_ARGS,
     )
