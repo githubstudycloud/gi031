@@ -53,7 +53,8 @@ app.include_router(vt_api.router,     prefix=settings.api_prefix, tags=["view-te
 
 # 静态前端复用同一套
 _root = Path(__file__).parent.parent
-for mount_path, sub in [("/ui", "prototype"), ("/vue", "frontend/vue"), ("/react", "frontend/react")]:
+for mount_path, sub in [("/ui", "prototype"), ("/vue", "frontend/vue"),
+                        ("/react", "frontend/react"), ("/vendor", "frontend/vendor")]:
     p = _root / sub
     if p.exists():
         app.mount(mount_path, StaticFiles(directory=str(p), html=True), name=sub.replace("/", "_"))

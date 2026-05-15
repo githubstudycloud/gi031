@@ -51,7 +51,8 @@ table.grid tfoot td.dim{color:var(--primary-600)} table.grid tfoot td.num{text-a
 <div id="app" class="app"></div>
 
 <script type="module">
-import { createApp, ref, computed, onMounted, h, watchEffect, reactive } from "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js";
+// 离线部署：从本地 /vendor 加载 (frontend/vendor/ → FastAPI 静态挂载)
+import { createApp, ref, computed, onMounted, h, watchEffect, reactive } from "../vendor/vue.esm-browser.prod.js";
 
 const API_BASE = (location.protocol === "file:") ? "http://127.0.0.1:8001" : "";
 

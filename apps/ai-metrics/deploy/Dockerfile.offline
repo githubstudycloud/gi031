@@ -1,0 +1,49 @@
+# 离线 / 内网 Dockerfile
+#
+# 约束（按用户内网环境）：
+#   - 假设 python:3.12-slim 镜像已在本地 (docker images 能看到)
+#   - 不装任何 apt 包（基础镜像够用）
+#   - pip 必须走内网源（PIP_INDEX_URL + PIP_TRUSTED_HOST）
+#   - 不连 mysql 镜像（host 上已有 mysql 5.7 服务，通过 host.docker.internal:3306 访问）
+#   - 不连 nginx（FastAPI StaticFiles 直接服务前端）
+#   - 所有前端 JS 依赖已 vendor 到 frontend/vendor/，不访问外网 CDN
+#
+# 构建：
+#   PIP_INDEX_URL=https://nexus.intra/repository/pypi-public/simple/ \
+#   PIP_TRUSTED_HOST=nexus.intra \
+#   docker build -f deploy/Dockerfile.offline -t ai-metrics:offline ..
+
+ARG PYTHON_IMAGE=python:3.12-slim
+FROM ${PYTHON_IMAGE}
+
+ARG PIP_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# 锁定 pip 内网源（必填，否则 pip 走默认仓库会失败）
+RUN set -eux; \
+    if [ -n "$PIP_INDEX_URL" ]; then \
+        pip config set global.index-url "$PIP_INDEX_URL"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then pip config set global.trusted-host "$PIP_TRUSTED_HOST"; fi; \
+        echo "[pip mirror] $PIP_INDEX_URL trusted=$PIP_TRUSTED_HOST"; \
+    else \
+        echo "[!] PIP_INDEX_URL 未设置；如本镜像无法连默认 PyPI 将失败" >&2; \
+    fi
+
+WORKDIR /app
+
+# 先 COPY 代码（pyproject.toml 引用了 app/ 包，必须一起在）
+COPY pyproject.toml ./
+COPY app ./app
+COPY prototype ./prototype
+COPY frontend ./frontend
+
+# 装依赖；mysql 走 pymysql (纯 Python，不需要 system mysql-client headers)
+RUN pip install --no-cache-dir ".[mysql]"
+
+EXPOSE 8001
+# uvicorn 自带信号处理；slim 镜像没有 tini，省略
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

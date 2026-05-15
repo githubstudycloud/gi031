@@ -1,292 +1,395 @@
-# API 文档 · AI 测试度量看板
+# API 文档 (ai-metrics)
 
-> Base URL: `http://<host>:8001`（本地 / 192.168.0.132 部署后用对应 IP）
-> 协议：所有响应统一信封 `{code, message, trace_id, data}`，错误时 code != 0。
-> OpenAPI / Swagger UI：`GET /docs`（FastAPI 自动生成）
+> 全部走 `Content-Type: application/json`；返回统一信封 `{code, message, trace_id, data}`。
+> 本地开发：`http://127.0.0.1:8001`；远端：`http://192.168.0.132:8001`。
+> Swagger UI：`/docs` · ReDoc：`/redoc`。
 
-## 端点速查
+## 0. 信封约定
 
-| 路径 | 方法 | 作用 |
-|---|---|---|
-| `/api/healthz` | GET | 健康检查 |
-| `/api/reports/ai_metrics/config` | GET | 拿报表完整配置（filters + header_tree + drilldowns）|
-| `/api/dropdowns/projects` | GET | 项目下拉数据 |
-| `/api/reports/ai_metrics/summary` | POST | 主表数据（含 totals_row）|
-| `/api/reports/ai_metrics/distinct` | POST | 列值去重（filter 弹框用）|
-| `/api/reports/ai_metrics/drilldown` | POST | 单元格下钻明细 |
-| `/api/metrics/ingest` | POST | 批量上报指标值 |
-| `/api/metrics/ingest_csv` | POST | CSV 批量导入 |
-| `/api/metrics/ingest_details` | POST | 上报下钻明细行 |
+成功响应：
 
----
+```jsonc
+{
+  "code": 0,
+  "message": "ok",
+  "trace_id": null,
+  "data": { ... }    // 具体见每个接口
+}
+```
 
-## 1. `GET /api/reports/ai_metrics/config`
+错误响应（FastAPI 默认）：
+
+```jsonc
+{ "detail": "..." }   // 422 (validation) / 400 / 404 / 500
+```
+
+业务错误码（V1 占位）：
+- `0`   成功
+- 后续按需扩 `4xxx` (业务) / `5xxx` (系统)
+
+## 1. 健康检查
 
 ```bash
-curl -s http://localhost:8001/api/reports/ai_metrics/config | python -m json.tool
+curl http://127.0.0.1:8001/api/healthz
+# → {"status":"ok"}
+```
+
+## 2. 报表配置（前端自描述协议）
+
+`GET /api/reports/{report_type}/config`
+
+```bash
+curl -s http://127.0.0.1:8001/api/reports/ai_metrics/config | jq '.data | {meta, primary_keys, filters}'
 ```
 
 返回（节选）：
+
+```jsonc
+{
+  "meta": { "report_type": "ai_metrics", "name": "AI 测试度量看板", "version": 1 },
+  "primary_keys": ["domain_code"],
+  "filters": [
+    { "code": "business_date", "kind": "date_range", "required": true,
+      "default": {"preset": "last_30_days"}, "param": {"from": "date_from", "to": "date_to"} },
+    { "code": "projects", "kind": "multi_select",
+      "source": { "endpoint": "/api/dropdowns/projects", "supports_favorite": true, "max_picks": 50 } }
+  ],
+  "columns": {
+    "summary": {
+      "header_tree": [
+        { "code": "_dim", "label": "领域", "children": [...] },
+        { "code": "_测试设计", "label": "测试设计", "children": [...] },
+        { "code": "_测试脚本生成", "label": "测试脚本生成", "children": [...] }
+      ]
+    }
+  },
+  "primary_view": {
+    "endpoint": "/api/reports/ai_metrics/summary",
+    "paging": { "default_page_size": 200, "default_mode": "client" },
+    "row_totals": true
+  }
+}
+```
+
+## 3. 项目下拉
+
+`GET /api/dropdowns/projects?q=&page=1&page_size=50`
+
+```bash
+curl -s "http://127.0.0.1:8001/api/dropdowns/projects?q=alpha"
+```
+
 ```jsonc
 {
   "code": 0,
   "data": {
-    "meta": { "report_type":"ai_metrics", "name":"AI 测试度量看板", "version":1 },
-    "primary_keys": ["domain_code"],
-    "filters": [
-      { "code":"business_date", "label":"时间段", "kind":"date_range", "required":true,
-        "param":{"from":"date_from","to":"date_to"} },
-      { "code":"projects", "label":"项目 (多选)", "kind":"multi_select", "required":true,
-        "param":{"value":"project_codes"},
-        "source":{"endpoint":"/api/dropdowns/projects", ...} }
+    "items": [
+      { "value": "proj_alpha", "label": "Alpha 内容平台", "is_favorite": false }
     ],
-    "primary_view": {
-      "endpoint":"/api/reports/ai_metrics/summary", "method":"POST",
-      "paging":{"enabled":true, "default_page_size":200, "default_mode":"client"},
-      "row_totals": true
-    },
-    "columns": {
-      "summary": { "header_tree": [
-        {"code":"_dim","label":"领域","children":[ {...domain_code 列...} ]},
-        {"code":"_测试设计","label":"测试设计","children":[ {...7 个指标列...} ]},
-        {"code":"_测试脚本生成","label":"测试脚本生成","children":[ {...4 个指标列...} ]}
-      ]}
-    },
-    "drilldowns": {
-      "metric_drill": { "title":"...", "endpoint":"/api/reports/ai_metrics/drilldown",
-        "method":"POST", "param_mapping":{...}, "header_tree":[...] }
+    "page": 1, "page_size": 50, "total": 1, "has_more": false
+  }
+}
+```
+
+## 4. 汇总查询（核心接口）
+
+`POST /api/reports/{report_type}/summary`
+
+```bash
+curl -s -X POST http://127.0.0.1:8001/api/reports/ai_metrics/summary \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date_from": "2026-04-15",
+    "date_to":   "2026-05-15",
+    "project_codes": ["proj_alpha", "proj_beta"],
+    "paging": "none",
+    "row_dim": "domain"
+  }' | jq '.data.items[0]'
+```
+
+返回（节选）：
+
+```jsonc
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "domain_code": "核心域",
+        "_domain_code_raw": "core",
+        "_row_key": { "domain_code": "core" },
+        "req_count": 404,
+        "ai_req_count": 229,
+        "ai_req_coverage": 56.68,
+        "new_case_count": 1092,
+        "ai_case_count": 531,
+        "ai_case_ratio": 48.63,
+        "ai_case_adoption_rate": 44.82,
+        "ai_script_code_ratio": 60.94,
+        "ai_code_lines": 19340,
+        "ai_code_accuracy": 88.21,
+        "new_script_ai_ratio": 51.12
+      }
+    ],
+    "page": 1, "page_size": 6, "total": 6, "has_more": false,
+    "extras": {
+      "totals_row": {
+        "domain_code": "合计",
+        "_is_total": true,
+        "req_count": 2263,
+        "ai_req_coverage": 51.83
+      }
     }
   }
 }
 ```
 
-`meta.version` 在 `metric_def` 表变更时手工 +1；前端用它做缓存失效。
+**字段语义**：
 
----
+| 列 | 类型 | 聚合规则 |
+|---|---|---|
+| `req_count` / `ai_req_count` / `new_case_count` / `ai_case_count` / `ai_code_lines` / `total_code_lines` / `new_script_count` | int | sum |
+| `ai_req_coverage` = `ai_req_count / req_count * 100` | percent | computed |
+| `ai_case_ratio` = `ai_case_count / new_case_count * 100` | percent | computed |
+| `ai_case_adoption_rate` = `ai_case_adopted / ai_case_count * 100` | percent | weighted_avg (权重=ai_case_count) |
+| `ai_script_code_ratio` = `ai_code_lines / total_code_lines * 100` | percent | computed |
+| `ai_code_accuracy` = `ai_code_accurate_lines / ai_code_lines * 100` | percent | weighted_avg (权重=ai_code_lines) |
+| `new_script_ai_ratio` = `new_script_ai_assisted_count / new_script_count * 100` | percent | weighted_avg |
 
-## 2. `GET /api/dropdowns/projects`
+## 5. 列值去重（列筛选用）
 
-| Query | 说明 |
-|---|---|
-| `q` | 模糊搜索 (label 或 code) |
-| `page` / `page_size` | 分页（page_size 默认 50） |
-| `sort` | 排序，例 `label:asc` |
-| `only_favorites` | 1 = 仅返回当前用户收藏（V1 占位）|
+`POST /api/reports/{report_type}/distinct`
 
 ```bash
-curl -s "http://localhost:8001/api/dropdowns/projects?q=alpha&page=1&page_size=10"
+curl -s -X POST http://127.0.0.1:8001/api/reports/ai_metrics/distinct \
+  -H "Content-Type: application/json" \
+  -d '{"column": "domain_code"}'
 ```
-
-```jsonc
-{ "code":0, "data": {
-  "items": [ {"value":"proj_alpha","label":"Alpha 内容平台","is_favorite":false} ],
-  "page":1, "page_size":10, "total":1, "has_more":false
-}}
-```
-
----
-
-## 3. `POST /api/reports/ai_metrics/summary`
-
-**核心接口**：返回按领域分组的全量度量行 + 一行 `extras.totals_row`。
-
-请求体：
 
 ```jsonc
 {
-  "date_from": "2026-05-01",            // 可空 = 不限
-  "date_to":   "2026-05-15",
-  "project_codes": ["proj_alpha", "proj_beta"],   // 可空 = 所有项目
-  "row_dim": "domain",                  // V1 only; V1.1 "project>domain" / "org>domain"
-  "paging": "none",                     // "server" or "none"
-  "page": 1, "page_size": 200,
-  "sort": "ai_code_lines:desc",         // 可空
-  "row_filter": []                      // 可空，详见 03-api §2.1.1
+  "code": 0,
+  "data": {
+    "column": "domain_code",
+    "items": [
+      { "value": "core",     "label": "核心域", "count": 1280 },
+      { "value": "business", "label": "业务域", "count": 1242 }
+    ],
+    "truncated": false
+  }
 }
 ```
 
-curl：
+## 6. 下钻明细
+
+`POST /api/reports/{report_type}/drilldown`
 
 ```bash
-curl -s -X POST http://localhost:8001/api/reports/ai_metrics/summary \
+curl -s -X POST http://127.0.0.1:8001/api/reports/ai_metrics/drilldown \
   -H "Content-Type: application/json" \
   -d '{
-    "date_from":"2026-05-01",
-    "date_to":"2026-05-15",
-    "project_codes":["proj_alpha","proj_beta"],
-    "paging":"none"
-  }' | python -m json.tool
-```
-
-httpie：
-
-```bash
-http POST :8001/api/reports/ai_metrics/summary \
-  date_from=2026-05-01 date_to=2026-05-15 \
-  project_codes:='["proj_alpha"]' paging=none
-```
-
-Python：
-
-```python
-import httpx
-r = httpx.post(
-    "http://localhost:8001/api/reports/ai_metrics/summary",
-    json={
-        "date_from": "2026-05-01", "date_to": "2026-05-15",
-        "project_codes": ["proj_alpha", "proj_beta"], "paging": "none",
+    "ref": "metric_drill",
+    "row":  { "domain_code": "core" },
+    "filter": {
+      "business_date": { "from": "2026-05-13", "to": "2026-05-15" },
+      "projects": ["proj_alpha"]
     },
-    timeout=15,
-)
-data = r.json()["data"]
-for row in data["items"]:
-    print(row["domain_code"], row["ai_req_coverage"], "%")
-print("TOTAL:", data["extras"]["totals_row"])
+    "cell": { "column": "ai_case_count" },
+    "paging": { "page": 1, "page_size": 20 }
+  }'
 ```
-
-响应（节选）：
-
-```jsonc
-{ "code":0, "data": {
-  "items": [
-    {
-      "domain_code": "核心域",
-      "_domain_code_raw": "core",
-      "req_count": 279.0, "ai_req_count": 128.0,
-      "new_case_count": 809.0, "ai_case_count": 466.0, "ai_case_adopted": 221.0,
-      "ai_code_lines": 13200.0, "total_code_lines": 22960.0,
-      "ai_code_accurate_lines": 12251.0,
-      "new_script_count": 121.0, "new_script_ai_assisted_count": 53.0,
-      "ai_req_coverage": 45.88,
-      "ai_case_ratio": 57.6,
-      "ai_case_adoption_rate": 47.42,
-      "ai_script_code_ratio": 57.49,
-      "ai_code_accuracy": 92.81,
-      "new_script_ai_ratio": 43.8
-    },
-    /* …其他 5 行领域… */
-  ],
-  "total": 6, "page": 1, "page_size": 6, "has_more": false,
-  "extras": { "totals_row": {
-    "req_count": 1786.0, ..., "ai_req_coverage": 49.21, "domain_code": "合计", "_is_total": true
-  }}
-}}
-```
-
----
-
-## 4. `POST /api/reports/ai_metrics/distinct`
-
-列值去重：
-
-```bash
-curl -s -X POST http://localhost:8001/api/reports/ai_metrics/distinct \
-  -H "Content-Type: application/json" \
-  -d '{"column":"domain_code","date_from":"2026-05-01","date_to":"2026-05-15"}'
-```
-
-```jsonc
-{"code":0,"data":{"column":"domain_code","items":[
-  {"value":"core","label":"核心域","count":52},
-  {"value":"business","label":"业务域","count":48},
-  ...
-],"truncated":false}}
-```
-
----
-
-## 5. `POST /api/reports/ai_metrics/drilldown`
-
-请求体：
 
 ```jsonc
 {
-  "ref": "metric_drill",
-  "row":  { "domain_code": "core" },
-  "filter": {
-    "business_date": {"from":"2026-05-01","to":"2026-05-15"},
-    "projects": ["proj_alpha","proj_beta"]
-  },
-  "cell": { "column": "ai_case_count" },
-  "paging": {"page": 1, "page_size": 30}
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "ref_id": "JIRA-CASE-proj_alpha-core-2026-05-15-0",
+        "ref_label": "[Jira] AI 用例 core/1",
+        "ref_url": "https://jira.example.com/case/123",
+        "detail_type": "case",
+        "is_ai_generated": true,
+        "is_adopted": null,
+        "period_date": "2026-05-15",
+        "payload": {"source": "jira", "scrape_at": "2026-05-15"}
+      }
+    ],
+    "page": 1, "page_size": 20, "total": 3, "has_more": false
+  }
 }
 ```
 
-```bash
-curl -s -X POST http://localhost:8001/api/reports/ai_metrics/drilldown \
-  -H "Content-Type: application/json" \
-  -d '{"ref":"metric_drill","row":{"domain_code":"core"},"filter":{"business_date":{"from":"2026-05-13","to":"2026-05-15"},"projects":["proj_alpha"]},"cell":{"column":"ai_case_count"},"paging":{"page":1,"page_size":10}}'
-```
+## 7. 视图模板（前端切换）
 
-返回 `ai_metric_detail` 行。
-
----
-
-## 6. 数据上报
-
-### 6.1 JSON 批量
+`GET /api/view_templates/{report_type}`
 
 ```bash
-curl -X POST http://localhost:8001/api/metrics/ingest \
-  -H "Content-Type: application/json" \
-  -d '{"items":[
-    {"period_date":"2026-05-15","project_code":"proj_alpha","domain_code":"core",
-     "metric_code":"req_count","metric_value":12,"source":"jira-cron"},
-    {"period_date":"2026-05-15","project_code":"proj_alpha","domain_code":"core",
-     "metric_code":"ai_req_count","metric_value":7,"source":"jira-cron"}
-  ]}'
+curl -s http://127.0.0.1:8001/api/view_templates/ai_metrics | jq '.data.items[].code'
 ```
 
-幂等：唯一键 `(period_date, project_code, domain_code, iteration_code, metric_code, source)`。重复上报会更新 `metric_value`。
+```jsonc
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "code": "weekly_finance", "name": "周度财务汇报", "source": "backend", "scope": "global",
+        "config": {
+          "density": "normal", "page_size": 200, "paging_mode": "client",
+          "show_kpi": true,
+          "kpi": [
+            {"label": "AI 用例数", "source": "totals.ai_case_count", "format": {"kind":"number","thousand":true}}
+          ],
+          "only_columns": ["domain_code","req_count","ai_req_count","ai_req_coverage","ai_case_count","ai_case_adoption_rate","ai_code_lines"],
+          "default_sort": {"field": "ai_code_lines", "dir": "desc"}
+        }
+      }
+    ]
+  }
+}
+```
 
-### 6.2 CSV 导入
+## 8. 数据上报 (Ingest)
+
+> 离线模拟模式下用 `python -m app.sources.simulate`；真实接入用以下两个端点。
+
+### 8.1 单条 / 批量上报
+
+`POST /api/metrics/ingest`
+
+```bash
+curl -X POST http://127.0.0.1:8001/api/metrics/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {
+        "period_date": "2026-05-15",
+        "project_code": "proj_alpha",
+        "domain_code":  "core",
+        "metric_code":  "req_count",
+        "metric_value": 12,
+        "source": "manual"
+      }
+    ]
+  }'
+# → {"code":0, "data":{"ingested": 1}}
+```
+
+幂等键：`(period_date, project_code, domain_code, iteration_code, metric_code, source)`。
+重复 POST 同样的键 → 更新 `metric_value`，不会重复入。
+
+### 8.2 CSV 批量
+
+`POST /api/metrics/ingest_csv`
+
+CSV 格式：
 
 ```csv
 period_date,project_code,domain_code,iteration_code,metric_code,metric_value,source
-2026-05-15,proj_alpha,core,,req_count,12,jira-cron
-2026-05-15,proj_alpha,core,,ai_req_count,7,jira-cron
+2026-05-15,proj_alpha,core,,req_count,12,manual
+2026-05-15,proj_alpha,core,,ai_req_count,8,manual
 ```
 
 ```bash
-curl -X POST -F "file=@metrics.csv" http://localhost:8001/api/metrics/ingest_csv
+curl -X POST http://127.0.0.1:8001/api/metrics/ingest_csv \
+  -F "file=@data.csv"
 ```
 
-### 6.3 下钻明细上报
+### 8.3 明细上报（用于下钻）
+
+`POST /api/metrics/ingest_details`
 
 ```bash
-curl -X POST http://localhost:8001/api/metrics/ingest_details \
+curl -X POST http://127.0.0.1:8001/api/metrics/ingest_details \
   -H "Content-Type: application/json" \
-  -d '{"items":[{
-    "period_date":"2026-05-15", "project_code":"proj_alpha", "domain_code":"core",
-    "metric_code":"ai_case_count", "detail_type":"case",
-    "ref_id":"CASE-12345", "ref_label":"AI 生成登录用例",
-    "ref_url":"https://testrail.example.com/case/12345",
-    "is_ai_generated": true, "is_adopted": true,
-    "payload": {"author":"ai-bot","reviewer":"qa-zhang"}
-  }]}'
+  -d '{
+    "items": [
+      {
+        "period_date": "2026-05-15",
+        "project_code": "proj_alpha",
+        "domain_code":  "core",
+        "metric_code":  "ai_case_count",
+        "detail_type":  "case",
+        "ref_id":       "TC-2026051501",
+        "ref_label":    "登录-异常重试用例",
+        "ref_url":      "https://testrail.example.com/case/123",
+        "is_ai_generated": true,
+        "is_adopted":   true,
+        "payload": {"author":"alice"}
+      }
+    ]
+  }'
 ```
 
----
+## 9. 一键 smoke verification
 
-## 7. 扩展点（保留接口）
+```bash
+bash deploy/deploy-offline.sh verify
+# 输出 7 个端点 + 前端静态资源的 200/失败
+```
 
-| 想要的能力 | 怎么扩 |
+## 10. Python 客户端示例
+
+```python
+import httpx
+from datetime import date
+
+client = httpx.Client(base_url="http://192.168.0.132:8001")
+
+# 1. 写一批指标
+r = client.post("/api/metrics/ingest", json={
+    "items": [
+        {"period_date": date.today().isoformat(),
+         "project_code": "proj_alpha", "domain_code": "core",
+         "metric_code": "req_count", "metric_value": 12, "source": "jira"},
+        {"period_date": date.today().isoformat(),
+         "project_code": "proj_alpha", "domain_code": "core",
+         "metric_code": "ai_req_count", "metric_value": 8, "source": "jira"},
+    ]
+})
+print("ingest:", r.json())
+
+# 2. 查汇总
+r = client.post("/api/reports/ai_metrics/summary",
+                json={"paging": "none", "project_codes": ["proj_alpha"]})
+data = r.json()["data"]
+print(f"rows: {len(data['items'])}")
+print(f"totals.ai_req_coverage: {data['extras']['totals_row']['ai_req_coverage']}%")
+```
+
+## 11. 模拟数据 (无真实数据源时使用)
+
+V1 当前 **真实数据源未接入**，全部用模拟数据：
+
+```bash
+# 容器内：
+docker exec ai-metrics-api python -m app.seed.fake_data --days 30 --reset
+docker exec ai-metrics-api python -m app.sources.simulate --source all --days 7
+
+# 或直接在 venv：
+python -m app.seed.fake_data --days 30 --reset       # 灌一次基础数据
+python -m app.sources.simulate --source jira --days 1 # 单源模拟（按 cron 用）
+python -m app.sources.simulate --source all --days 7  # 全源 7 天
+
+# 跟 cron 一起用（让 simulate 每小时跑一次当天数据）:
+crontab -e
+5 * * * * docker exec ai-metrics-api python -m app.sources.simulate --source all --days 1 >> /var/log/ai-metrics-sim.log 2>&1
+```
+
+模拟源 4 个：
+- `jira`     → req_count / ai_req_count
+- `testrail` → new_case_count / ai_case_count / ai_case_adopted
+- `gitlab`   → total_code_lines / ai_code_lines / new_script_count / new_script_ai_assisted_count
+- `sonar`    → ai_code_accurate_lines
+
+## 12. 错误码与排查
+
+| 现象 | 排查 |
 |---|---|
-| 加新指标（如"AI 评审建议采纳数"）| 插一行 `metric_def` + 上报到 `ai_metric`；前端 `/config` 自动加列 |
-| 加新一级表头分组 | 设置 `metric_def.category` 为新值即可 |
-| 维度变 "项目 + 迭代" | `POST /summary` 加 `row_dim: "project>domain"` 或 `iteration>domain`（V1.1 实现）|
-| 维度变 4 层组织 | 用 `dim_org` + `row_dim: "org>domain"`（V1.2）|
-| 加视图模板（看板/紧凑） | 加 `view_template` 行；前端 🎨 切换即用 |
-
-## 8. 错误响应示例
-
-```jsonc
-{ "code": 4001, "message": "row_dim=org>domain not supported yet", "trace_id":"abc...", "data": null }
-```
-
-错误码段同主设计（见 [docs/design/03-api-spec §6](../../../docs/design/03-api-spec.md)）。
-
-## 9. 鉴权（V1 不开 / 占位）
-
-V1 接口无鉴权（同公司内网 + Nginx allow 列表）。
-V1.1 接入 JWT (RS256)：`Authorization: Bearer <token>`。
+| 422 Unprocessable Entity | 请求 JSON 格式错；看 `detail.loc` |
+| 500 Internal Server Error | 看 `docker logs ai-metrics-api`；常见：DATABASE_URL 错 |
+| `/api/reports/.../config` 返回空 columns | `dim_domain` 或 `metric_def` 表为空，跑 `seed.fake_data` |
+| `/api/.../summary` 行数 = 0 | `ai_metric` 表为空；跑 `app.seed.fake_data` 或 `app.sources.simulate` |
+| `/vue/` 报 import 404 | `frontend/vendor/*.js` 缺失；离线部署务必随仓库带这些文件 |
+| 跨网压测 timeout | NAT/conntrack 在突发短连接下丢包，改为远端 localhost 内打 ab |
