@@ -1,9 +1,5 @@
 from datetime import datetime, date, timezone
 
-
-def _utc_now() -> datetime:
-    """timezone-aware UTC now（替代 datetime.utcnow()，3.12 起 deprecated）"""
-    return datetime.now(timezone.utc).replace(tzinfo=None)  # 存入 DB 时不带 tz（与已有列保持兼容）
 from sqlalchemy import (
     BigInteger, String, Integer, Date, DateTime, Boolean, Numeric, JSON,
     UniqueConstraint, Index, ForeignKey, text
@@ -11,6 +7,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, MYSQL_TABLE_ARGS
+
+
+def _utc_now() -> datetime:
+    """timezone-aware UTC now（替代 datetime.utcnow()，3.12 起 deprecated）"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)  # 存入 DB 时不带 tz（与已有列保持兼容）
 
 
 # ────── 维度 ──────
@@ -31,6 +32,8 @@ class DimDomain(Base):
     code: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # V4: 软删（query 自动过滤 inactive）
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     __table_args__ = (MYSQL_TABLE_ARGS,)
 
 
@@ -87,6 +90,8 @@ class MetricDef(Base):
     drilldown_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default_visible: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # V4: 软删 + 隐藏（不在 UI / config 中展示，但聚合可能仍用作分母）
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     __table_args__ = (MYSQL_TABLE_ARGS,)
 
 

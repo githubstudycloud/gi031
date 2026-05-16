@@ -234,13 +234,7 @@ def simulate_source_day(db, src_key, the_date, proj_doms: dict[str, list[str]]):
     proj_doms: {project_code: [domain_code, ...]} —— 仅遍历已映射的组合。"""
     ver = _next_version(db, the_date, src_key)
     inserted_metric = 0
-    detail_count_before = db.execute(
-        select(func.count()).select_from(AiMetricDetail)
-        .where(AiMetricDetail.period_date == the_date,
-               AiMetricDetail.source == src_key,
-               AiMetricDetail.version_no == ver)
-    ).scalar() or 0
-
+    # detail 是边算边 add 的，每个 generator 都不返 count；本函数最后单次 COUNT(*) 即可
     for proj, dom_list in proj_doms.items():
         for dom in dom_list:
             gen = SOURCE_GENERATORS[src_key]
@@ -268,13 +262,13 @@ def simulate_source_day(db, src_key, the_date, proj_doms: dict[str, list[str]]):
                 inserted_metric += 1
 
     db.commit()
-    detail_count_after = db.execute(
+    detail_count = db.execute(
         select(func.count()).select_from(AiMetricDetail)
         .where(AiMetricDetail.period_date == the_date,
                AiMetricDetail.source == src_key,
                AiMetricDetail.version_no == ver)
     ).scalar() or 0
-    return inserted_metric, detail_count_after - detail_count_before, ver
+    return inserted_metric, detail_count, ver
 
 
 def run(src_keys, days_back, reset=False, runs_per_day=1):
@@ -287,6 +281,13 @@ def run(src_keys, days_back, reset=False, runs_per_day=1):
 
     with SessionLocal() as db:
         # **关键**：读项目-领域映射，只对真实存在的 (proj, domain) 组合生成
+        # 同时过滤掉软删的 project / domain（DimProject.is_active=False 等）
+        active_projects = {p.code for p in db.execute(
+            select(DimProject).where(DimProject.is_active.is_(True))
+        ).scalars()}
+        active_domains = {d.code for d in db.execute(
+            select(DimDomain).where(DimDomain.is_active.is_(True))
+        ).scalars()}
         mappings = db.execute(
             select(DimProjectDomain).where(DimProjectDomain.is_active.is_(True))
             .order_by(DimProjectDomain.project_code, DimProjectDomain.sort_order)
@@ -294,10 +295,15 @@ def run(src_keys, days_back, reset=False, runs_per_day=1):
         if not mappings:
             print("⚠ no project-domain mappings — run `python -m app.seed.fake_data` first")
             return
-        # 按项目分组：proj_code → [domain_code, ...]
+        # 按项目分组：proj_code → [domain_code, ...]，跳过已软删的
         proj_doms: dict[str, list[str]] = {}
         for m in mappings:
+            if m.project_code not in active_projects: continue
+            if m.domain_code  not in active_domains:  continue
             proj_doms.setdefault(m.project_code, []).append(m.domain_code)
+        if not proj_doms:
+            print("⚠ all mappings reference inactive projects/domains; nothing to simulate")
+            return
 
         if reset:
             db.execute(delete(AiMetric).where(AiMetric.source.in_(src_keys)))

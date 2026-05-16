@@ -71,10 +71,9 @@ COPY admin /app/admin
 
 RUN pip install --no-cache-dir ".[mysql]" || pip install --no-cache-dir "."
 
-EXPOSE 8001
+EXPOSE 8001 8002
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/healthz', timeout=2).status==200 else 1)" || exit 1
-
+# 镜像级 HEALTHCHECK 故意省略：compose 为 api / generation 分别定义了健康检查
+# （image-level 探针对生成服务端口/路径都不对）。
 ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

@@ -12,7 +12,12 @@ CONFIG_VERSION = 2   # V2: row_dim_options + version mgmt + row_favorite
 
 
 def assemble_config(db: Session, report_type: str = "ai_metrics") -> dict:
-    metrics = db.execute(select(MetricDef).order_by(MetricDef.sort_order, MetricDef.code)).scalars().all()
+    # V4: 只暴露 is_active=True 的 metric 给 UI（软删的 metric 不在 header_tree 中）
+    metrics = db.execute(
+        select(MetricDef)
+        .where(MetricDef.is_active.is_(True))
+        .order_by(MetricDef.sort_order, MetricDef.code)
+    ).scalars().all()
 
     # 按 category 分组成 header_tree（领域列单独一组）
     by_cat: dict[str, list[MetricDef]] = {}

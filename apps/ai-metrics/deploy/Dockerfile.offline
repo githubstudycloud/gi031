@@ -45,11 +45,9 @@ COPY admin ./admin
 # 装依赖；mysql 走 pymysql (纯 Python，不需要 system mysql-client headers)
 RUN pip install --no-cache-dir ".[mysql]"
 
-EXPOSE 8001
+EXPOSE 8001 8002
 
-# 容器内健康检查：每 10s 调一次 /api/healthz，3 次失败标 unhealthy
-HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/healthz', timeout=2).status==200 else 1)" || exit 1
-
+# 镜像级 HEALTHCHECK 故意省略：compose 为 api / generation 分别定义了健康检查
+# （image-level 探针对生成服务端口/路径都不对）。
 # uvicorn 自带信号处理；slim 镜像没有 tini，省略
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

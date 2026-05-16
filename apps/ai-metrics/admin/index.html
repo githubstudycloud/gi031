@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>AI 度量看板 · 管理</title>
 <style>
-:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--success:#16a34a;--danger:#dc2626;--row-hover:#eff6ff}
+:root{--bg:#f4f6fb;--panel:#fff;--border:#e3e7ee;--border-strong:#c9d0db;--text:#0f172a;--text-soft:#475569;--muted:#94a3b8;--primary:#2563eb;--primary-50:#eff6ff;--primary-600:#1d4ed8;--success:#16a34a;--danger:#dc2626;--warn:#f59e0b;--row-hover:#eff6ff}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"Segoe UI Variable","PingFang SC",sans-serif}
 .app{max-width:1400px;margin:0 auto;padding:16px 20px}
-.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .top h1{font-size:18px;margin:0} .top .badge{background:#fde68a;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
 .top .grow{flex:1} .top a{color:var(--primary);text-decoration:none;font-size:12px;margin-left:12px}
 .top input{padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;outline:0;font:inherit;width:300px}
+.banner{padding:8px 14px;border-radius:6px;margin-bottom:12px;font-size:12px;display:none}
+.banner.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;display:block}
+.banner.err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;display:block}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 1px 2px rgba(15,23,42,.06);overflow:hidden}
 .card-hd{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -48,11 +51,13 @@ td input[type=text]{min-width:80px}
     <h1>AI 度量看板 · 管理后台</h1>
     <span class="badge">字段配置 · admin only</span>
     <span class="grow"></span>
-    <span class="tip" id="genUrl"></span>
-    <a href="/ui/" target="_blank">原生 HTML</a>
-    <a href="/vue/" target="_blank">Vue demo</a>
-    <a href="/react/" target="_blank">React demo</a>
+    <span class="tip" id="metaInfo"></span>
+    <button class="btn" onclick="changeToken()" id="tokenBtn" style="display:none">🔑 重设 Token</button>
+    <a id="navUi" href="/ui/" target="_blank">原生 HTML</a>
+    <a id="navVue" href="/vue/" target="_blank">Vue demo</a>
+    <a id="navReact" href="/react/" target="_blank">React demo</a>
   </div>
+  <div class="banner" id="banner"></div>
 
   <div class="cards">
     <!-- 项目 -->
@@ -110,23 +115,56 @@ td input[type=text]{min-width:80px}
 <div class="toast" id="toast"></div>
 
 <script>
-/* 管理后台调 generation service；地址按 location 推导。
-   - 当通过 /admin/ 路径访问 (FastAPI mount)：query 服务在 :8001 → 推 generation 在 :8002
-   - 当独立打开 file://：手工指定 */
-const GEN_URL = (() => {
-  if (location.protocol === "file:") return "http://127.0.0.1:8002";
-  // 同 host，端口替换 8001 → 8002
-  const port = location.port || (location.protocol === "https:" ? "443" : "80");
-  if (port === "8002") return "";   // 直接挂在 generation 上
-  if (port === "8001") return location.origin.replace(/:8001$/, ":8002");
-  return "";
-})();
-document.getElementById("genUrl").textContent = "→ " + (GEN_URL || location.origin);
+"use strict";
+
+/* ─── XSS 防护：所有用户可控字符串经 esc() 后才能进 DOM ─── */
+function esc(s) {
+  if (s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+/* ─── 服务发现 + 鉴权 ───
+   V4：HTML 与 admin API 同 origin（都在 generation:8002）。
+   - GEN_URL = "" 表示同 origin
+   - 通过 GET /api/admin/_meta 读 has_auth / query_url
+   - has_auth 时从 localStorage 拿 ADMIN_TOKEN；没有就 prompt 一次
+*/
+const API_PREFIX = "/api";
+let GEN_URL = "";              // admin API 基址；同 origin 时为空串
+let HAS_AUTH = false;
+let ADMIN_TOKEN = localStorage.getItem("ai-metrics.admin_token") || "";
+let META = null;
+
+function setBanner(text, kind) {
+  const el = document.getElementById("banner");
+  el.textContent = text;
+  el.className = "banner " + (kind || "warn");
+}
+function clearBanner() {
+  const el = document.getElementById("banner");
+  el.className = "banner";
+  el.textContent = "";
+}
+
+function toast(m) {
+  const el = document.getElementById("toast");
+  el.textContent = m; el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2200);
+}
 
 async function api(path, opts = {}) {
-  const r = await fetch(GEN_URL + path, {
-    ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) }
-  });
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (HAS_AUTH && ADMIN_TOKEN) headers["X-Admin-Token"] = ADMIN_TOKEN;
+  const r = await fetch(GEN_URL + path, { ...opts, headers });
+  if (r.status === 401) {
+    // 401：token 错或没设；清掉本地的，提示
+    localStorage.removeItem("ai-metrics.admin_token");
+    ADMIN_TOKEN = "";
+    setBanner("X-Admin-Token 缺失或错误。点 🔑 重设。", "err");
+    throw new Error("HTTP 401: unauthorized");
+  }
   if (!r.ok) {
     const t = await r.text();
     throw new Error(`HTTP ${r.status}: ${t.slice(0, 200)}`);
@@ -134,15 +172,59 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-let projects = [], domains = [], metrics = [], pdMap = {};
+function changeToken() {
+  const t = prompt("输入 X-Admin-Token（部署时由运维配置）", ADMIN_TOKEN || "");
+  if (t === null) return;
+  ADMIN_TOKEN = t.trim();
+  if (ADMIN_TOKEN) localStorage.setItem("ai-metrics.admin_token", ADMIN_TOKEN);
+  else localStorage.removeItem("ai-metrics.admin_token");
+  loadAll();
+}
 
-function toast(m, kind = "ok") {
-  const el = document.getElementById("toast");
-  el.textContent = m; el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 1800);
+async function fetchMeta() {
+  // 首先尝试同 origin
+  try {
+    const r = await fetch(API_PREFIX + "/admin/_meta");
+    if (r.ok) {
+      const j = await r.json();
+      META = j.data || j;
+      GEN_URL = "";
+      return true;
+    }
+    // 同 origin 404 / 405 — 当前页面可能挂在 query 服务上，提示
+    if (r.status === 404 || r.status === 405) {
+      setBanner("⚠ 当前页面运行在非 generation 服务上（/api/admin 路由 404）。"
+                + "请改用 generation 服务（通常 :8002/admin/）。", "err");
+      return false;
+    }
+  } catch (e) {
+    setBanner("⚠ 无法连接到 /api/admin/_meta：" + e.message, "err");
+    return false;
+  }
+  return false;
 }
 
 async function loadAll() {
+  clearBanner();
+  const ok = await fetchMeta();
+  if (!ok) return;
+
+  HAS_AUTH = !!META.has_auth;
+  document.getElementById("tokenBtn").style.display = HAS_AUTH ? "" : "none";
+  document.getElementById("metaInfo").textContent =
+    "→ " + (location.origin) + (HAS_AUTH ? "  · auth: ON" : "  · auth: OFF (dev)");
+
+  // 顶部跳转链接：优先用 META.query_url；否则同 origin（dev monolith）
+  const queryBase = META.query_url || location.origin;
+  document.getElementById("navUi").href    = queryBase + "/ui/";
+  document.getElementById("navVue").href   = queryBase + "/vue/";
+  document.getElementById("navReact").href = queryBase + "/react/";
+
+  if (HAS_AUTH && !ADMIN_TOKEN) {
+    setBanner("admin 启用了鉴权。请点右上角 🔑 设置 Token。", "warn");
+    return;
+  }
+
   try {
     const [p, d, pd, m] = await Promise.all([
       api("/api/admin/projects"), api("/api/admin/domains"),
@@ -159,38 +241,47 @@ async function loadAll() {
   }
 }
 
+let projects = [], domains = [], metrics = [], pdMap = {};
+
 /* ─── 项目 ─── */
 function renderProjects() {
   const tb = document.querySelector("#projTable tbody"); tb.innerHTML = "";
   for (const p of projects) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><input type="text" disabled value="${p.code}"></td>
-      <td><input type="text" value="${p.name}"></td>
-      <td><input type="checkbox" ${p.is_active ? "checked" : ""}></td>
+      <td><input type="text" disabled value="${esc(p.code)}"></td>
+      <td><input type="text" class="js-name" value="${esc(p.name)}"></td>
+      <td><input type="checkbox" class="js-active" ${p.is_active ? "checked" : ""}></td>
       <td class="actions-cell">
-        <button class="btn" onclick="saveProject('${p.code}', this)">保存</button>
-        <button class="btn danger" onclick="deleteProject('${p.code}')">删除</button>
+        <button class="btn js-save">保存</button>
+        <button class="btn danger js-del">删除</button>
       </td>`;
+    tr.querySelector(".js-save").addEventListener("click", () => saveProject(p.code, tr));
+    tr.querySelector(".js-del").addEventListener("click",  () => deleteProject(p.code));
     tb.appendChild(tr);
   }
 }
-async function saveProject(code, btn) {
-  const tr = btn.closest("tr");
-  const name = tr.querySelectorAll("input")[1].value;
-  const active = tr.querySelectorAll("input")[2].checked;
-  await api("/api/admin/projects", { method: "POST", body: JSON.stringify({ code, name, is_active: active }) });
-  toast("已保存"); loadAll();
+async function saveProject(code, tr) {
+  const name = tr.querySelector(".js-name").value;
+  const active = tr.querySelector(".js-active").checked;
+  try {
+    await api("/api/admin/projects", { method: "POST",
+      body: JSON.stringify({ code, name, is_active: active }) });
+    toast("已保存"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 async function deleteProject(code) {
-  if (!confirm(`删除项目 ${code} 及其映射?`)) return;
-  await api("/api/admin/projects/" + encodeURIComponent(code), { method: "DELETE" });
-  toast("已删除"); loadAll();
+  if (!confirm(`删除项目 ${code}?（默认软删，可通过加 ?force=1 硬删）`)) return;
+  try {
+    await api("/api/admin/projects/" + encodeURIComponent(code), { method: "DELETE" });
+    toast("已删除（软）"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 function addProject() {
   const code = prompt("项目 code（如 proj_epsilon）"); if (!code) return;
   const name = prompt("项目名称（如 Epsilon 推荐系统）"); if (!name) return;
-  api("/api/admin/projects", { method: "POST", body: JSON.stringify({ code, name, is_active: true }) })
+  api("/api/admin/projects", { method: "POST",
+    body: JSON.stringify({ code: code.trim(), name: name.trim(), is_active: true }) })
     .then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
 }
 
@@ -200,118 +291,143 @@ function renderDomains() {
   for (const d of domains) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><input type="text" disabled value="${d.code}"></td>
-      <td><input type="text" value="${d.name}"></td>
-      <td><input type="number" value="${d.sort_order}" style="width:60px"></td>
+      <td><input type="text" disabled value="${esc(d.code)}"></td>
+      <td><input type="text" class="js-name" value="${esc(d.name)}"></td>
+      <td><input type="number" class="js-sort" value="${esc(d.sort_order)}" style="width:60px"></td>
       <td class="actions-cell">
-        <button class="btn" onclick="saveDomain('${d.code}', this)">保存</button>
-        <button class="btn danger" onclick="deleteDomain('${d.code}')">删除</button>
+        <button class="btn js-save">保存</button>
+        <button class="btn danger js-del">删除</button>
       </td>`;
+    tr.querySelector(".js-save").addEventListener("click", () => saveDomain(d.code, tr));
+    tr.querySelector(".js-del").addEventListener("click",  () => deleteDomain(d.code));
     tb.appendChild(tr);
   }
 }
-async function saveDomain(code, btn) {
-  const tr = btn.closest("tr");
-  const name = tr.querySelectorAll("input")[1].value;
-  const sort_order = +tr.querySelectorAll("input")[2].value;
-  await api("/api/admin/domains", { method: "POST", body: JSON.stringify({ code, name, sort_order }) });
-  toast("已保存"); loadAll();
+async function saveDomain(code, tr) {
+  const name = tr.querySelector(".js-name").value;
+  const sort_order = +tr.querySelector(".js-sort").value;
+  try {
+    await api("/api/admin/domains", { method: "POST",
+      body: JSON.stringify({ code, name, sort_order }) });
+    toast("已保存"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 async function deleteDomain(code) {
   if (!confirm(`删除领域 ${code}?`)) return;
-  await api("/api/admin/domains/" + encodeURIComponent(code), { method: "DELETE" });
-  toast("已删除"); loadAll();
+  try {
+    await api("/api/admin/domains/" + encodeURIComponent(code), { method: "DELETE" });
+    toast("已删除（软）"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 function addDomain() {
   const code = prompt("领域 code"); if (!code) return;
   const name = prompt("领域名称"); if (!name) return;
-  api("/api/admin/domains", { method: "POST", body: JSON.stringify({ code, name, sort_order: 99 }) })
+  api("/api/admin/domains", { method: "POST",
+    body: JSON.stringify({ code: code.trim(), name: name.trim(), sort_order: 99 }) })
     .then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
 }
 
 /* ─── 项目-领域映射 矩阵 ─── */
 function renderMatrix() {
   const tb = document.getElementById("matrixTable");
-  let head = `<thead><tr><th>项目 \\ 领域</th>` +
-    domains.map(d => `<th>${d.name}<br><small style="color:var(--muted);font-weight:400">${d.code}</small></th>`).join("") + `</tr></thead>`;
-  let body = "<tbody>";
+  let headHtml = `<thead><tr><th>项目 \\ 领域</th>` +
+    domains.map(d => `<th>${esc(d.name)}<br><small style="color:var(--muted);font-weight:400">${esc(d.code)}</small></th>`).join("") + `</tr></thead>`;
+  let bodyHtml = "<tbody>";
   for (const p of projects) {
     const ds = pdMap[p.code] || [];
-    body += `<tr><td>${p.name}<br><small style="color:var(--muted)">${p.code}</small></td>`;
+    bodyHtml += `<tr><td>${esc(p.name)}<br><small style="color:var(--muted)">${esc(p.code)}</small></td>`;
     for (const d of domains) {
       const on = ds.includes(d.code);
-      body += `<td class="${on ? 'on' : 'off'}" onclick="toggleMapping('${p.code}','${d.code}')">${on ? "✓" : "—"}</td>`;
+      // 用 data-* 而非把 code 插进 onclick 字符串，避免引号注入
+      bodyHtml += `<td class="${on ? 'on' : 'off'}" data-proj="${esc(p.code)}" data-dom="${esc(d.code)}">${on ? "✓" : "—"}</td>`;
     }
-    body += "</tr>";
+    bodyHtml += "</tr>";
   }
-  body += "</tbody>";
-  tb.innerHTML = head + body;
+  bodyHtml += "</tbody>";
+  tb.innerHTML = headHtml + bodyHtml;
+  tb.querySelectorAll("td[data-proj]").forEach(td => {
+    td.addEventListener("click", () => toggleMapping(td.dataset.proj, td.dataset.dom));
+  });
 }
 async function toggleMapping(proj, dom) {
   const cur = pdMap[proj] || [];
   let next;
   if (cur.includes(dom)) next = cur.filter(x => x !== dom);
   else next = [...cur, dom];
-  await api("/api/admin/project_domains", { method: "POST",
-    body: JSON.stringify({ project_code: proj, domain_codes: next }) });
-  pdMap[proj] = next;
-  renderMatrix();
-  toast(`${proj} ↔ ${dom}: ${cur.includes(dom) ? '解除' : '已映射'}`);
+  try {
+    await api("/api/admin/project_domains", { method: "POST",
+      body: JSON.stringify({ project_code: proj, domain_codes: next }) });
+    pdMap[proj] = next;
+    renderMatrix();
+    toast(`${proj} ↔ ${dom}: ${cur.includes(dom) ? '解除' : '已映射'}`);
+  } catch (e) { toast(e.message); }
 }
 
 /* ─── 指标 ─── */
 function renderMetrics() {
   const tb = document.querySelector("#metricTable tbody"); tb.innerHTML = "";
+  const dtOptions = ["int","decimal","percent"].map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  const aggOptions = ["sum","avg","weighted_avg","computed"].map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
   for (const m of metrics) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><input value="${m.code}" disabled style="min-width:120px"></td>
-      <td><input value="${m.label}" style="min-width:140px"></td>
-      <td><input value="${m.category}" style="width:90px"></td>
-      <td><input value="${m.unit ?? ''}" style="width:50px"></td>
-      <td>
-        <select>${["int","decimal","percent"].map(v=>`<option value="${v}"${m.data_type===v?" selected":""}>${v}</option>`).join("")}</select>
-      </td>
-      <td>
-        <select>${["sum","avg","weighted_avg","computed"].map(v=>`<option value="${v}"${m.agg_method===v?" selected":""}>${v}</option>`).join("")}</select>
-      </td>
-      <td><input value="${m.computed_formula ?? ''}" style="min-width:200px"></td>
-      <td><input value="${m.weight_metric ?? ''}" style="width:120px"></td>
-      <td><input type="checkbox" ${m.drilldown_enabled ? "checked":""}></td>
-      <td><input type="checkbox" ${m.is_default_visible ? "checked":""}></td>
-      <td><input type="number" value="${m.sort_order}" style="width:50px"></td>
+      <td><input value="${esc(m.code)}" disabled style="min-width:120px"></td>
+      <td><input class="js-label" value="${esc(m.label)}" style="min-width:140px"></td>
+      <td><input class="js-cat" value="${esc(m.category)}" style="width:90px"></td>
+      <td><input class="js-unit" value="${esc(m.unit ?? '')}" style="width:50px"></td>
+      <td><select class="js-dt">${dtOptions}</select></td>
+      <td><select class="js-agg">${aggOptions}</select></td>
+      <td><input class="js-formula" value="${esc(m.computed_formula ?? '')}" style="min-width:200px"></td>
+      <td><input class="js-weight" value="${esc(m.weight_metric ?? '')}" style="width:120px"></td>
+      <td><input type="checkbox" class="js-drill" ${m.drilldown_enabled ? "checked":""}></td>
+      <td><input type="checkbox" class="js-vis" ${m.is_default_visible ? "checked":""}></td>
+      <td><input type="number" class="js-order" value="${esc(m.sort_order)}" style="width:50px"></td>
       <td class="actions-cell">
-        <button class="btn" onclick="saveMetric('${m.code}', this)">保存</button>
-        <button class="btn danger" onclick="deleteMetric('${m.code}')">删除</button>
+        <button class="btn js-save">保存</button>
+        <button class="btn danger js-del">删除</button>
       </td>`;
+    // 设 select 当前值（避免拼字符串注入）
+    tr.querySelector(".js-dt").value  = m.data_type;
+    tr.querySelector(".js-agg").value = m.agg_method;
+    tr.querySelector(".js-save").addEventListener("click", () => saveMetric(m.code, tr));
+    tr.querySelector(".js-del").addEventListener("click",  () => deleteMetric(m.code));
     tb.appendChild(tr);
   }
 }
-async function saveMetric(code, btn) {
-  const tr = btn.closest("tr");
-  const inputs = tr.querySelectorAll("input, select");
+async function saveMetric(code, tr) {
   const body = {
     code,
-    label: inputs[1].value, category: inputs[2].value, unit: inputs[3].value || null,
-    data_type: inputs[4].value, agg_method: inputs[5].value,
-    computed_formula: inputs[6].value || null, weight_metric: inputs[7].value || null,
-    drilldown_enabled: inputs[8].checked, is_default_visible: inputs[9].checked,
-    sort_order: +inputs[10].value,
+    label:    tr.querySelector(".js-label").value,
+    category: tr.querySelector(".js-cat").value,
+    unit:     tr.querySelector(".js-unit").value || null,
+    data_type: tr.querySelector(".js-dt").value,
+    agg_method: tr.querySelector(".js-agg").value,
+    computed_formula: tr.querySelector(".js-formula").value || null,
+    weight_metric:    tr.querySelector(".js-weight").value || null,
+    drilldown_enabled: tr.querySelector(".js-drill").checked,
+    is_default_visible: tr.querySelector(".js-vis").checked,
+    sort_order: +tr.querySelector(".js-order").value,
+    is_active: true,
   };
-  await api("/api/admin/metrics", { method: "POST", body: JSON.stringify(body) });
-  toast("已保存"); loadAll();
+  try {
+    await api("/api/admin/metrics", { method: "POST", body: JSON.stringify(body) });
+    toast("已保存"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 async function deleteMetric(code) {
-  if (!confirm(`删除指标 ${code}?\n注意：事实表已有此 metric 的数据不会自动清理`)) return;
-  await api("/api/admin/metrics/" + encodeURIComponent(code), { method: "DELETE" });
-  toast("已删除"); loadAll();
+  if (!confirm(`删除指标 ${code}? 软删后该 metric 不再出现在报表 header；事实表数据保留。`)) return;
+  try {
+    await api("/api/admin/metrics/" + encodeURIComponent(code), { method: "DELETE" });
+    toast("已删除（软）"); loadAll();
+  } catch (e) { toast(e.message); }
 }
 function addMetric() {
   const code = prompt("指标 code (例: ai_review_count)"); if (!code) return;
   const label = prompt("指标名称") || code;
   const category = prompt("分类 (测试设计 / 测试脚本生成 / ...)") || "其它";
   api("/api/admin/metrics", { method: "POST",
-    body: JSON.stringify({ code, label, category, data_type: "int", agg_method: "sum", is_default_visible: true, drilldown_enabled: false, sort_order: 99 })
+    body: JSON.stringify({ code: code.trim(), label, category, data_type: "int", agg_method: "sum",
+                           is_default_visible: true, drilldown_enabled: false, sort_order: 99, is_active: true })
   }).then(() => { toast("已创建"); loadAll(); }).catch(e => toast(e.message));
 }
 
@@ -322,7 +438,8 @@ async function runSimulate() {
   const reset = document.getElementById("simReset").checked;
   toast("仿真启动中...");
   try {
-    await api("/api/admin/generate/simulate", { method: "POST", body: JSON.stringify({ days, runs_per_day: runs, reset }) });
+    await api("/api/admin/generate/simulate", { method: "POST",
+      body: JSON.stringify({ days, runs_per_day: runs, reset }) });
     toast(`仿真完成: ${days} 天 × ${runs} 版本`);
   } catch (e) { toast("仿真失败: " + e.message); }
 }
@@ -330,7 +447,8 @@ async function runPreagg() {
   const days = +document.getElementById("preDays").value;
   toast("预聚合中...");
   try {
-    const r = await api("/api/admin/preagg/refresh", { method: "POST", body: JSON.stringify({ days_back: days }) });
+    const r = await api("/api/admin/preagg/refresh", { method: "POST",
+      body: JSON.stringify({ days_back: days }) });
     toast(`预聚合: 删 ${r.data.deleted} / 插 ${r.data.inserted}`);
   } catch (e) { toast("预聚合失败: " + e.message); }
 }

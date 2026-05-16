@@ -3,14 +3,21 @@
 V2 升级要点：
 - 每个 (period_date, source) 可有多个 version_no；查询默认取 latest_valid
   （即不在 ai_metric_invalid_mark 表中的最大 version_no）
-- row_dim 支持 'domain' (默认 6 行) / 'project>domain' (24 行，分页演示)
+- row_dim 支持 'domain' (默认 6 行) / 'project>domain' (默认依映射)
 - 行级筛选 (row_filter)：对衍生后的 row dict 应用谓词
 - 行级排序 (sort)：支持任意字段、收藏优先
 - 行级分页 (page, page_size)：在 Python 层切片，total 反映过滤后的行数
 - 行收藏：基于 user_row_favorite 表 join；查询时给每行 _row_favorite=true/false
+
+V4 升级要点：
+- ATOMIC_METRICS 与 computed 列**改为运行时从 `metric_def` 读取**：
+  - atomic = metric_def 中 agg_method='sum' 且 is_active=True 的 code
+  - computed = agg_method in ('computed','weighted_avg') 且 formula 形如 'A/B*100'
+- 数据库空（启动 seed 前）时 fallback 到 DEFAULT_ATOMIC（避免 init_db 后裸跑就 500）
 """
 from __future__ import annotations
 import json
+import re
 from datetime import date, timedelta
 from collections import defaultdict
 from typing import Literal
@@ -20,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     AiMetric, AiMetricDetail, AiMetricInvalidMark,
-    DimDomain, DimProject, UserRowFavorite, ReportFactDaily,
+    DimDomain, DimProject, MetricDef, UserRowFavorite, ReportFactDaily,
 )
 from ..settings import settings
 
@@ -31,8 +38,8 @@ def _pct(num, den):
     return round(float(num) * 100.0 / float(den), 2)
 
 
-# 所有原子指标 code（加 metric 时只改这里 + metric_def + simulate.py）
-ATOMIC_METRICS = [
+# 启动 fallback：当 metric_def 为空（init_db 之后、seed 之前）时使用
+DEFAULT_ATOMIC = [
     "req_count", "ai_req_count",
     "new_case_count", "ai_case_count",
     "ai_case_adopted",
@@ -40,6 +47,44 @@ ATOMIC_METRICS = [
     "ai_code_accurate_lines",
     "new_script_count", "new_script_ai_assisted_count",
 ]
+
+
+# 形如 'ai_req_count/req_count*100' 的简单百分比公式
+# computed/weighted_avg 行级展开都退化成此形式（更高级公式后续 V5 再做）
+_PCT_FORMULA_RE = re.compile(r"^\s*([a-z_][a-z0-9_]*)\s*/\s*([a-z_][a-z0-9_]*)\s*\*\s*100\s*$")
+
+
+def _parse_pct_formula(s: str | None) -> tuple[str, str] | None:
+    if not s:
+        return None
+    m = _PCT_FORMULA_RE.match(s)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def get_atomic_metrics(db: Session) -> list[str]:
+    """从 metric_def 拉 atomic 指标 code 列表（按 sort_order）。空表 fallback 到 DEFAULT_ATOMIC。"""
+    rows = db.execute(
+        select(MetricDef.code)
+        .where(MetricDef.agg_method == "sum", MetricDef.is_active.is_(True))
+        .order_by(MetricDef.sort_order, MetricDef.code)
+    ).scalars().all()
+    return list(rows) if rows else list(DEFAULT_ATOMIC)
+
+
+def get_computed_specs(db: Session) -> list[tuple[str, str, str]]:
+    """返回 [(out_code, num_code, den_code), ...]；formula 无法解析的 metric 会跳过。"""
+    rows = db.execute(
+        select(MetricDef.code, MetricDef.computed_formula)
+        .where(MetricDef.agg_method.in_(["computed", "weighted_avg"]),
+               MetricDef.is_active.is_(True))
+        .order_by(MetricDef.sort_order, MetricDef.code)
+    ).all()
+    specs: list[tuple[str, str, str]] = []
+    for code, formula in rows:
+        parts = _parse_pct_formula(formula)
+        if parts:
+            specs.append((code, parts[0], parts[1]))
+    return specs
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -149,14 +194,22 @@ def _row_key_str(row_dim: str, vals: dict) -> str:
     raise ValueError(f"unsupported row_dim: {row_dim}")
 
 
-def _derive_computed(r: dict) -> None:
-    """填充 computed/weighted_avg 列。原地改 r。"""
-    r["ai_req_coverage"]       = _pct(r["ai_req_count"], r["req_count"])
-    r["ai_case_ratio"]         = _pct(r["ai_case_count"], r["new_case_count"])
-    r["ai_case_adoption_rate"] = _pct(r["ai_case_adopted"], r["ai_case_count"])
-    r["ai_script_code_ratio"]  = _pct(r["ai_code_lines"], r["total_code_lines"])
-    r["ai_code_accuracy"]      = _pct(r["ai_code_accurate_lines"], r["ai_code_lines"])
-    r["new_script_ai_ratio"]   = _pct(r["new_script_ai_assisted_count"], r["new_script_count"])
+def _derive_computed(r: dict, specs: list[tuple[str, str, str]] | None = None) -> None:
+    """填充 computed/weighted_avg 列。原地改 r。
+
+    specs: 调用方传入；未传则保守 fallback 到内建（兼容旧调用）。
+    """
+    if specs is None:
+        specs = [
+            ("ai_req_coverage",       "ai_req_count",                  "req_count"),
+            ("ai_case_ratio",         "ai_case_count",                 "new_case_count"),
+            ("ai_case_adoption_rate", "ai_case_adopted",               "ai_case_count"),
+            ("ai_script_code_ratio",  "ai_code_lines",                 "total_code_lines"),
+            ("ai_code_accuracy",      "ai_code_accurate_lines",        "ai_code_lines"),
+            ("new_script_ai_ratio",   "new_script_ai_assisted_count",  "new_script_count"),
+        ]
+    for out, num, den in specs:
+        r[out] = _pct(r.get(num), r.get(den))
 
 
 def _apply_row_filter(rows: list[dict], filters: list[dict]) -> list[dict]:
@@ -250,6 +303,10 @@ def fetch_summary(
     if row_dim not in ("domain", "project>domain"):
         raise ValueError(f"row_dim={row_dim} 不支持；可选 'domain' / 'project>domain'")
 
+    # V4: 运行时读 metric_def，原子指标 + computed 公式都数据驱动
+    atomic_metrics = get_atomic_metrics(db)
+    computed_specs = get_computed_specs(db)
+
     # 1) 拣 latest valid version（受 invalid_mark 影响）
     pin = None
     if version_pin:
@@ -257,7 +314,7 @@ def fetch_summary(
                 v["source"]): int(v["version_no"]) for v in version_pin}
     valid = latest_valid_versions(db, date_from, date_to, version_pin=pin)
     if not valid:
-        return {"rows": [], "totals": _empty_totals(row_dim), "total": 0, "valid_versions": []}
+        return {"rows": [], "totals": _empty_totals(row_dim, atomic_metrics, computed_specs), "total": 0, "valid_versions": []}
 
     # 2) 把 (date, source, version) 三元组 OR 合并成 WHERE 子句
     #    MySQL 不能直接 IN tuple，所以用 OR 列表 + UNION ALL alternative
@@ -284,7 +341,7 @@ def fetch_summary(
     if date_to:   valid_sq = valid_sq.where(AiMetric.period_date <= date_to)
     valid_sq = valid_sq.group_by(AiMetric.period_date, AiMetric.source).subquery("vv")
 
-    conds = [AiMetric.metric_code.in_(ATOMIC_METRICS)]
+    conds = [AiMetric.metric_code.in_(atomic_metrics)]
     if date_from: conds.append(AiMetric.period_date >= date_from)
     if date_to:   conds.append(AiMetric.period_date <= date_to)
     if project_codes: conds.append(AiMetric.project_code.in_(project_codes))
@@ -295,7 +352,7 @@ def fetch_summary(
             pa_cols = [ReportFactDaily.domain_code]
         else:
             pa_cols = [ReportFactDaily.project_code, ReportFactDaily.domain_code]
-        pa_conds = [ReportFactDaily.metric_code.in_(ATOMIC_METRICS)]
+        pa_conds = [ReportFactDaily.metric_code.in_(atomic_metrics)]
         if date_from: pa_conds.append(ReportFactDaily.period_date >= date_from)
         if date_to:   pa_conds.append(ReportFactDaily.period_date <= date_to)
         if project_codes: pa_conds.append(ReportFactDaily.project_code.in_(project_codes))
@@ -326,7 +383,7 @@ def fetch_summary(
 
     # 4) 装配 row dict
     keyfn = (lambda r: (r[0],)) if row_dim == "domain" else (lambda r: (r[0], r[1]))
-    grouped: dict[tuple, dict] = defaultdict(lambda: {m: 0.0 for m in ATOMIC_METRICS})
+    grouped: dict[tuple, dict] = defaultdict(lambda: {m: 0.0 for m in atomic_metrics})
     for row in rows_raw:
         if row_dim == "domain":
             key = (row[0],); m_code = row[1]; v = row[2]
@@ -343,7 +400,7 @@ def fetch_summary(
     items: list[dict] = []
     for key, atoms in grouped.items():
         r = dict(atoms)
-        _derive_computed(r)
+        _derive_computed(r, computed_specs)
         if row_dim == "domain":
             domain_code = key[0]
             r["_domain_code_raw"] = domain_code
@@ -376,9 +433,9 @@ def fetch_summary(
     total = len(items)
 
     # 7) 合计行：基于已过滤的全集再算一遍（不分页）
-    totals_atom = {m: sum(it.get(m, 0) or 0 for it in items) for m in ATOMIC_METRICS}
+    totals_atom = {m: sum(it.get(m, 0) or 0 for it in items) for m in atomic_metrics}
     totals = dict(totals_atom)
-    _derive_computed(totals)
+    _derive_computed(totals, computed_specs)
     if row_dim == "domain":
         totals["domain_code"] = "合计"
     else:
@@ -411,10 +468,7 @@ def fetch_summary(
                 k = f"project_code={pr['_project_code_raw']};domain_code={pr['_domain_code_raw']}"
             prev_by_key[k] = pr
         # 给当前 items 加 _prev_{m} / _delta_{m} / _delta_pct_{m}
-        comparable_metrics = ATOMIC_METRICS + [
-            "ai_req_coverage", "ai_case_ratio", "ai_case_adoption_rate",
-            "ai_script_code_ratio", "ai_code_accuracy", "new_script_ai_ratio",
-        ]
+        comparable_metrics = atomic_metrics + [s[0] for s in computed_specs]
         for it in items:
             if row_dim == "domain":
                 k = f"domain_code={it['_domain_code_raw']}"
@@ -448,9 +502,10 @@ def fetch_summary(
     }
 
 
-def _empty_totals(row_dim):
-    out = {m: 0.0 for m in ATOMIC_METRICS}
-    _derive_computed(out)
+def _empty_totals(row_dim, atomic_metrics=None, computed_specs=None):
+    am = atomic_metrics if atomic_metrics is not None else DEFAULT_ATOMIC
+    out = {m: 0.0 for m in am}
+    _derive_computed(out, computed_specs)
     out["domain_code"] = "合计"
     if row_dim == "project>domain":
         out["project_code"] = "合计"; out["domain_code"] = ""

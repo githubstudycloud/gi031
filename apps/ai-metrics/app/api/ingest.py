@@ -8,9 +8,10 @@ import csv
 from ..db import get_db
 from ..models import AiMetric, AiMetricDetail
 from ..schemas import Envelope, IngestRequest, IngestDetailRequest
+from .admin import require_admin_token
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_token)])
 
 
 def _upsert_metrics(db: Session, rows: list[dict]) -> int:

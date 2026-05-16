@@ -1,3 +1,11 @@
+"""**Dev / 单体便利入口**（包含 query + ingest + admin + 调度器）。
+
+⚠ 生产环境请用拆分：
+    uvicorn app.main_query:app       --port 8001   # 读
+    uvicorn app.main_generation:app  --port 8002   # 写 + APScheduler
+
+本入口在同一进程内挂全部路由（含 admin / ingest），仅供本地开发 / docker 单容器跑 demo。
+"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,12 +23,16 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI 测试度量看板", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="AI 测试度量看板 · Dev 单体", version="0.4.0", lifespan=lifespan)
 
+# CORS：`*` 与 credentials 不可共存（浏览器拒绝），自动降级
+_cors_is_wildcard = (settings.cors_origins.strip() == "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.cors_origins] if settings.cors_origins != "*" else ["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if _cors_is_wildcard else [
+        o.strip() for o in settings.cors_origins.split(",") if o.strip()
+    ],
+    allow_credentials=not _cors_is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -47,8 +59,10 @@ for mount_path, sub in [("/ui", "prototype"), ("/vue", "frontend/vue"),
 def root():
     return {
         "name": "ai-metrics",
+        "mode": "dev-monolith (query + ingest + admin)",
         "ui_html":  "/ui/",
         "ui_vue":   "/vue/",
         "ui_react": "/react/",
+        "admin":    "/admin/",
         "api": settings.api_prefix, "docs": "/docs",
     }

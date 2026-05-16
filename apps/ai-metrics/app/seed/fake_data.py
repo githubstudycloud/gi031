@@ -13,7 +13,7 @@ import random
 from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.db import SessionLocal, init_db
 from app.models import (
@@ -81,6 +81,7 @@ PROJECT_DOMAINS = {
 }
 
 # 指标定义（数据驱动，加指标改这里）
+# 字段顺序: code, label, category, unit, data_type, agg_method, formula, weight, drill, visible, sort_order
 METRIC_DEFS = [
     # ── 测试设计 ──
     ("req_count",             "需求个数",           "测试设计", "个",  "int",     "sum",          None, None,                True,  True,  10),
@@ -88,11 +89,18 @@ METRIC_DEFS = [
     ("ai_req_coverage",       "AI 涉及需求覆盖率",   "测试设计", "%",   "percent", "computed",     "ai_req_count/req_count*100", None,        False, True,  12),
     ("new_case_count",        "新增用例个数",         "测试设计", "个",  "int",     "sum",          None, None,                True,  True,  13),
     ("ai_case_count",         "AI 用例个数",          "测试设计", "个",  "int",     "sum",          None, None,                True,  True,  14),
-    ("ai_case_ratio",         "测试用例 AI 生成占比", "测试设计", "%",   "percent", "computed",     "ai_case_count/new_case_count*100", None, False, True,  15),
-    ("ai_case_adoption_rate", "AI 生成用例采纳率",    "测试设计", "%",   "percent", "weighted_avg", "ai_case_adopted/ai_case_count*100", "ai_case_count", False, True, 16),
+    # 原子分母：用作 ai_case_adoption_rate 分子，不在 UI 默认展示
+    ("ai_case_adopted",       "AI 用例已采纳数",     "测试设计", "个",  "int",     "sum",          None, None,                True,  False, 15),
+    ("ai_case_ratio",         "测试用例 AI 生成占比", "测试设计", "%",   "percent", "computed",     "ai_case_count/new_case_count*100", None, False, True,  16),
+    ("ai_case_adoption_rate", "AI 生成用例采纳率",    "测试设计", "%",   "percent", "weighted_avg", "ai_case_adopted/ai_case_count*100", "ai_case_count", False, True, 17),
     # ── 测试脚本生成 ──
     ("ai_script_code_ratio",  "AI 生成脚本代码占比", "测试脚本生成", "%",   "percent", "computed",     "ai_code_lines/total_code_lines*100", None, False, True,  20),
     ("ai_code_lines",         "AI 生成代码入库行数", "测试脚本生成", "行",  "int",     "sum",          None, None,                True,  True,  21),
+    # 原子分母：total_code_lines / ai_code_accurate_lines / new_script_ai_assisted_count
+    ("total_code_lines",      "代码总入库行数",       "测试脚本生成", "行",  "int",     "sum",          None, None,                False, False, 24),
+    ("ai_code_accurate_lines","AI 代码准确入库行数",  "测试脚本生成", "行",  "int",     "sum",          None, None,                False, False, 25),
+    ("new_script_count",      "新增脚本数",          "测试脚本生成", "个",  "int",     "sum",          None, None,                False, False, 26),
+    ("new_script_ai_assisted_count","AI 辅助新脚本数","测试脚本生成", "个",  "int",     "sum",          None, None,                False, False, 27),
     ("ai_code_accuracy",      "AI 生成代码准确率",   "测试脚本生成", "%",   "percent", "weighted_avg", "ai_code_accurate_lines/ai_code_lines*100", "ai_code_lines", False, True, 22),
     ("new_script_ai_ratio",   "新增脚本 AI 辅助占比", "测试脚本生成", "%",   "percent", "weighted_avg", "new_script_ai_assisted_count/new_script_count*100", "new_script_count", False, True, 23),
 ]
@@ -114,95 +122,40 @@ ATOMIC_VALUE_RANGES = {
 
 
 def seed_dimensions(db: Session):
-    if not db.query(DimProject).count():
-        for code, name in PROJECTS:
+    """V4: 逐行 upsert（按 code 检查），允许后续在源码加新维度直接生效。
+
+    不会覆盖用户在 admin 后台修改过的 label/sort_order — 只会补齐缺失的 code。
+    """
+    existing_projects = {p.code for p in db.execute(select(DimProject)).scalars()}
+    for code, name in PROJECTS:
+        if code not in existing_projects:
             db.add(DimProject(code=code, name=name))
-    if not db.query(DimDomain).count():
-        for code, name, sort_order in DOMAINS:
+
+    existing_domains = {d.code for d in db.execute(select(DimDomain)).scalars()}
+    for code, name, sort_order in DOMAINS:
+        if code not in existing_domains:
             db.add(DimDomain(code=code, name=name, sort_order=sort_order))
-    if not db.query(DimProjectDomain).count():
-        for proj, doms in PROJECT_DOMAINS.items():
-            for sort_idx, dom in enumerate(doms):
+
+    existing_pd = {(r.project_code, r.domain_code)
+                   for r in db.execute(select(DimProjectDomain)).scalars()}
+    for proj, doms in PROJECT_DOMAINS.items():
+        for sort_idx, dom in enumerate(doms):
+            if (proj, dom) not in existing_pd:
                 db.add(DimProjectDomain(project_code=proj, domain_code=dom,
                                         is_active=True, sort_order=sort_idx))
-    if not db.query(MetricDef).count():
-        for (code, label, cat, unit, dt, agg, formula, weight, drill, vis, so) in METRIC_DEFS:
+
+    existing_metrics = {m.code for m in db.execute(select(MetricDef)).scalars()}
+    for (code, label, cat, unit, dt, agg, formula, weight, drill, vis, so) in METRIC_DEFS:
+        if code not in existing_metrics:
             db.add(MetricDef(
                 code=code, label=label, category=cat, unit=unit, data_type=dt,
                 agg_method=agg, computed_formula=formula, weight_metric=weight,
                 drilldown_enabled=drill, is_default_visible=vis, sort_order=so,
             ))
+
     if not db.query(ViewTemplate).count():
         for vt in VIEW_TEMPLATES:
             db.add(ViewTemplate(**vt))
-    db.commit()
-
-
-def seed_facts(db: Session, days: int):
-    """**已废弃 V3**：旧版会写 source='seed' 的 v1 fact，但没有明细 → 内外不一致。
-    保留函数签名仅为向后兼容；现在是 no-op。请改用 `app.sources.simulate`。"""
-    print("⚠ seed_facts is a no-op since V3; use `python -m app.sources.simulate` instead")
-    return
-
-def _legacy_seed_facts_disabled(db: Session, days: int):
-    today = date.today()
-    detail_id = 1
-    for d_offset in range(days):
-        the_date = today - timedelta(days=d_offset)
-        for proj, _ in PROJECTS:
-            for domain, _, _ in DOMAINS:
-                req = random.randint(*ATOMIC_VALUE_RANGES["req_count"])
-                ai_req = random.randint(0, req)
-                new_case = random.randint(*ATOMIC_VALUE_RANGES["new_case_count"])
-                ai_case = random.randint(0, new_case)
-                ai_case_adopted = random.randint(0, ai_case)
-                total_lines = random.randint(*ATOMIC_VALUE_RANGES["total_code_lines"])
-                ai_lines = random.randint(0, total_lines)
-                ai_accurate = random.randint(int(ai_lines * 0.85), ai_lines) if ai_lines else 0
-                new_script = random.randint(*ATOMIC_VALUE_RANGES["new_script_count"])
-                new_script_ai = random.randint(0, new_script)
-
-                vals = {
-                    "req_count": req, "ai_req_count": ai_req,
-                    "new_case_count": new_case, "ai_case_count": ai_case, "ai_case_adopted": ai_case_adopted,
-                    "total_code_lines": total_lines, "ai_code_lines": ai_lines,
-                    "ai_code_accurate_lines": ai_accurate,
-                    "new_script_count": new_script, "new_script_ai_assisted_count": new_script_ai,
-                }
-                for mcode, mval in vals.items():
-                    db.merge(AiMetric(
-                        period_date=the_date, project_code=proj, domain_code=domain,
-                        iteration_code=None, org_path=None,
-                        metric_code=mcode, metric_value=float(mval), source="seed",
-                    ))
-
-                # 部分领域当天给一些明细（便于演示 drilldown）
-                if d_offset < 3:
-                    for i in range(min(ai_case, 5)):
-                        db.add(AiMetricDetail(
-                            period_date=the_date, project_code=proj, domain_code=domain,
-                            metric_code="ai_case_count", detail_type="case",
-                            ref_id=f"CASE-{proj}-{domain}-{the_date}-{i}",
-                            ref_label=f"AI 用例 #{i+1} for {domain}",
-                            ref_url=f"https://testrail.example.com/case/{detail_id}",
-                            is_ai_generated=True,
-                            is_adopted=(i < ai_case_adopted // max(1, ai_case // 5 or 1)) if ai_case else None,
-                            payload={"source_tool": "AI Designer"},
-                        ))
-                        detail_id += 1
-                    if ai_lines:
-                        # AI 入库代码明细按 PR 粒度
-                        for i in range(min(3, max(1, ai_lines // 200))):
-                            db.add(AiMetricDetail(
-                                period_date=the_date, project_code=proj, domain_code=domain,
-                                metric_code="ai_code_lines", detail_type="code_change",
-                                ref_id=f"MR-{proj}-{the_date}-{detail_id}",
-                                ref_label=f"feat: AI 生成自动化脚本 (#{detail_id})",
-                                ref_url=f"https://gitlab.example.com/!{detail_id}",
-                                is_ai_generated=True,
-                                payload={"lines": ai_lines // 3, "files": random.randint(1, 5)},
-                            ))
-                            detail_id += 1
     db.commit()
 
 

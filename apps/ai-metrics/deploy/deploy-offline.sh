@@ -42,6 +42,17 @@ require_env() {
         echo "❌ $ENV_FILE 不存在；先跑 $0 init 后再编辑"
         exit 1
     fi
+    # V4: 检测 DATABASE_URL 仍是 CHANGE-ME 默认值，提前拦截
+    if grep -E "^DATABASE_URL=" "$ENV_FILE" | grep -q "CHANGE-ME"; then
+        echo "❌ $ENV_FILE 中的 DATABASE_URL 还是默认占位密码 (CHANGE-ME)；"
+        echo "   请改成你 host 上 mysql 真实的连接串后重试。"
+        exit 1
+    fi
+    # V4: 鼓励生产配 ADMIN_TOKEN（不强制；空就 warn）
+    if ! grep -E "^ADMIN_TOKEN=.+" "$ENV_FILE" >/dev/null; then
+        echo "⚠ ADMIN_TOKEN 未设置 — admin/ingest 端点将以 dev 模式开放（无鉴权）。"
+        echo "  生产部署请在 $ENV_FILE 中设置 ADMIN_TOKEN=<长字符串>。"
+    fi
 }
 
 print_setup_db() {

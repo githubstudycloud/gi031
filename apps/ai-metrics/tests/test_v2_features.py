@@ -1,8 +1,33 @@
 """V2 新特性 smoke tests：多版本拣选、row_dim、行 filter/sort/page、版本管理、行收藏。
 
 依赖 conftest.py 的 seeded_db fixture：4 来源 × 1 天 × 2 版本 + seed 源 3 天 v1。
+
+V4：原本硬编码的 "17 = 4 项目 × 真实领域映射" 改为从 DB 动态推导，避免改映射后 CI 假阳。
 """
 from __future__ import annotations
+import pytest
+
+
+@pytest.fixture(scope="session")
+def project_domain_row_count(seeded_db):
+    """从 DB 拉真实的 (active project × active mapping) 行数；用于 row_dim=project>domain 断言。"""
+    from app.db import SessionLocal
+    from app.models import DimProject, DimDomain, DimProjectDomain
+    from sqlalchemy import select
+    with SessionLocal() as db:
+        active_projects = {p.code for p in db.execute(
+            select(DimProject).where(DimProject.is_active.is_(True))
+        ).scalars()}
+        active_domains = {d.code for d in db.execute(
+            select(DimDomain).where(DimDomain.is_active.is_(True))
+        ).scalars()}
+        rows = db.execute(
+            select(DimProjectDomain).where(DimProjectDomain.is_active.is_(True))
+        ).scalars().all()
+        return sum(
+            1 for r in rows
+            if r.project_code in active_projects and r.domain_code in active_domains
+        )
 
 
 def test_versions_endpoint(client):
@@ -30,25 +55,26 @@ def test_summary_row_dim_domain(client):
     assert "valid_versions" in data["extras"]
 
 
-def test_summary_row_dim_project_domain(client):
+def test_summary_row_dim_project_domain(client, project_domain_row_count):
     r = client.post("/api/reports/ai_metrics/summary",
                     json={"paging": "none", "row_dim": "project>domain"})
     assert r.status_code == 200
     data = r.json()["data"]
-    # 4 projects × 真实领域映射 = 17 行（不是 4×6=24，因为每个项目只有 4-5 个领域）
-    assert len(data["items"]) == 17
+    # 行数 = DB 中真实的 (active project × active mapping) 组合数
+    assert len(data["items"]) == project_domain_row_count
     sample = data["items"][0]
     assert "project_code" in sample and "domain_code" in sample
     assert "_project_code_raw" in sample and "_domain_code_raw" in sample
 
 
-def test_summary_paging(client):
+def test_summary_paging(client, project_domain_row_count):
+    page_size = min(10, max(1, project_domain_row_count - 1))
     r = client.post("/api/reports/ai_metrics/summary",
-                    json={"paging": "server", "page": 1, "page_size": 10,
+                    json={"paging": "server", "page": 1, "page_size": page_size,
                           "row_dim": "project>domain"})
     data = r.json()["data"]
-    assert len(data["items"]) == 10
-    assert data["total"] == 17    # 4 项目×realistic 领域映射 = 17（不再是 4×6=24）
+    assert len(data["items"]) == page_size
+    assert data["total"] == project_domain_row_count
     assert data["has_more"] is True
 
 

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..db import SessionLocal, init_db
 from ..models import AiMetric, AiMetricInvalidMark, ReportFactDaily
-from .metric_query import ATOMIC_METRICS
+from .metric_query import get_atomic_metrics
 
 
 def refresh(date_from: date, date_to: date, db: Session | None = None) -> tuple[int, int]:
@@ -32,6 +32,8 @@ def refresh(date_from: date, date_to: date, db: Session | None = None) -> tuple[
     if db is None:
         with SessionLocal() as _db:
             return refresh(date_from, date_to, _db)
+
+    atomic_metrics = get_atomic_metrics(db)
 
     # 1) 先删除该区间已有的预聚合
     deleted = db.execute(
@@ -77,7 +79,7 @@ def refresh(date_from: date, date_to: date, db: Session | None = None) -> tuple[
             AiMetric.version_no == valid_sq.c.v,
         ))
         .where(
-            AiMetric.metric_code.in_(ATOMIC_METRICS),
+            AiMetric.metric_code.in_(atomic_metrics),
             AiMetric.period_date >= date_from,
             AiMetric.period_date <= date_to,
         )
@@ -88,15 +90,17 @@ def refresh(date_from: date, date_to: date, db: Session | None = None) -> tuple[
     )
 
     rows = db.execute(agg).all()
-    inserted = 0
-    for pd, proj, dom, mc, val in rows:
-        db.execute(
-            ReportFactDaily.__table__.insert().values(
-                period_date=pd, project_code=proj, domain_code=dom,
-                metric_code=mc, metric_value=float(val or 0),
-            )
-        )
-        inserted += 1
+    if rows:
+        # V4: 批量 insert（替代之前的循环单行 execute）
+        payload = [
+            {"period_date": pd, "project_code": proj, "domain_code": dom,
+             "metric_code": mc, "metric_value": float(val or 0)}
+            for pd, proj, dom, mc, val in rows
+        ]
+        db.execute(ReportFactDaily.__table__.insert(), payload)
+        inserted = len(payload)
+    else:
+        inserted = 0
     db.commit()
     return deleted, inserted
 
